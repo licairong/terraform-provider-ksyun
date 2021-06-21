@@ -117,8 +117,9 @@ func resourceRedisInstance() *schema.Resource {
 				},
 			},
 			"pass_word": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:      schema.TypeString,
+				Optional:  true,
+				Sensitive: true,
 			},
 			"iam_project_id": {
 				Type:     schema.TypeString,
@@ -142,8 +143,17 @@ func resourceRedisInstance() *schema.Resource {
 				Required: true,
 			},
 			"security_group_id": {
-				Type:     schema.TypeString,
-				Required: true,
+				Type:             schema.TypeString,
+				Optional:         true,
+				DiffSuppressFunc: kcsSecurityGroupDiffSuppressFunc,
+			},
+			"security_group_ids": {
+				Type:     schema.TypeSet,
+				Computed: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Set: schema.HashString,
 			},
 			"engine": {
 				Type:     schema.TypeString,
@@ -223,11 +233,13 @@ func resourceRedisInstance() *schema.Resource {
 			},
 			"reset_all_parameters": {
 				Type:     schema.TypeBool,
-				Required: true,
+				Optional: true,
+				Default:  false,
 			},
 			"parameters": {
-				Type:     schema.TypeMap,
-				Optional: true,
+				Type:             schema.TypeMap,
+				Optional:         true,
+				DiffSuppressFunc: kcsParameterDiffSuppressFunc,
 			},
 		},
 	}
@@ -270,12 +282,12 @@ func resourceRedisInstanceCreate(d *schema.ResourceData, meta interface{}) error
 		MinTimeout: 1 * time.Minute,
 	}
 	_, err = stateConf.WaitForState()
-	_ = resourceRedisInstanceParamCreate(d, meta)
+	_ = resourceRedisInstanceRead(d, meta)
 	if err != nil {
 		return fmt.Errorf("error on create Instance: %s", err)
 	}
 	// create instance parameter
-	return resourceRedisInstanceRead(d, meta)
+	return resourceRedisInstanceParamCreate(d, meta)
 }
 
 func resourceRedisInstanceParamCreate(d *schema.ResourceData, meta interface{}) error {
@@ -338,6 +350,8 @@ func resourceRedisInstanceParamCreate(d *schema.ResourceData, meta interface{}) 
 		if err != nil {
 			return fmt.Errorf("error on set instance parameter: %s", err)
 		}
+	} else {
+		return d.Set("reset_all_parameters", true)
 	}
 	return nil
 }
@@ -539,6 +553,7 @@ func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) error
 	if err != nil {
 		return fmt.Errorf("error on set instance parameter: %s", err)
 	}
+	_ = d.Set("reset_all_parameters", d.Get("reset_all_parameters"))
 	return nil
 }
 
@@ -593,13 +608,34 @@ func resourceRedisInstanceRead(d *schema.ResourceData, meta interface{}) error {
 		Field: "capacity",
 	}
 	SdkResponseAutoResourceData(d, resourceRedisInstance(), item, extra)
-	extra1 := make(map[string]SdkResponseMapping)
-	extra1["az"] = SdkResponseMapping{
+
+	extra["az"] = SdkResponseMapping{
 		Field: "az",
 	}
-	SdkResponseAutoResourceData(d, resourceRedisInstance(), item, extra1)
+	SdkResponseAutoResourceData(d, resourceRedisInstance(), item, extra)
 	//resourceRedisInstanceParamRead(d, meta)
 	_ = resourceRedisInstanceParamRead(d, meta)
+	//force set reset_all_parameters false on read
+	_ = d.Set("reset_all_parameters", false)
+
+	//get SecurityGroups
+	querySg := make(map[string]interface{})
+	querySg["CacheId"] = d.Id()
+	if resp, err = conn.DescribeSecurityGroups(&querySg); err != nil {
+		return fmt.Errorf("error on reading instance %q, %s", d.Id(), err)
+	}
+	if item, ok = (*resp)["Data"].(map[string]interface{}); !ok {
+		return nil
+	}
+	var itemSetSlice []string
+	if sgs, ok := item["list"].([]interface{}); ok {
+		for _, sg := range sgs {
+			if info, ok := sg.(map[string]interface{}); ok {
+				itemSetSlice = append(itemSetSlice, info["securityGroupId"].(string))
+			}
+		}
+	}
+	_ = d.Set("security_group_ids", itemSetSlice)
 
 	return nil
 }
