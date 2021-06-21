@@ -507,10 +507,12 @@ func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) error
 	reset := d.Get("reset_all_parameters")
 	updateReq["ResetAllParameters"] = fmt.Sprintf("%v", reset)
 	if !reset.(bool) {
-		if params, ok = d.GetOk("parameters"); !ok {
-			logger.Info("instance parameters do not exist")
-			return nil
-		}
+		//if params, ok = d.GetOk("parameters"); !ok {
+		//	logger.Info("instance parameters do not exist")
+		//	return nil
+		//}
+		//map类型这里获取GetOK拿到的永远是旧的 用change获取
+		_, params = d.GetChange("parameters")
 		param, ok1 := params.(map[string]interface{})
 		if !ok1 {
 			logger.Info("type of instance parameters must be map")
