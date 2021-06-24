@@ -402,22 +402,29 @@ func validateExists(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "cannot be found") || strings.Contains(strings.ToLower(err.Error()), "invalidaction")
 }
 
-func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) error {
+func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) (err error) {
 	var (
 		resp   *map[string]interface{}
 		v      interface{}
 		params interface{}
-		err    error
 		ok     bool
 		az     string
 	)
 
-	d.Partial(true)
-	defer d.Partial(false)
+	defer func(d *schema.ResourceData, meta interface{}) {
+		_err := resourceRedisInstanceRead(d, meta)
+		if err == nil {
+			err = _err
+		} else {
+			if _err != nil {
+				err = fmt.Errorf(err.Error()+" %s", _err)
+			}
+		}
+
+	}(d, meta)
 	conn := meta.(*KsyunClient).kcsv1conn
 	// rename
 	if d.HasChange("name") {
-		d.SetPartial("name")
 		if v, ok = d.GetOk("name"); !ok {
 			return fmt.Errorf("cann't change name to empty string")
 		}
@@ -436,7 +443,6 @@ func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) error
 	}
 	// update password
 	if d.HasChange("pass_word") {
-		d.SetPartial("pass_word")
 		if v, ok = d.GetOk("pass_word"); !ok {
 			return fmt.Errorf("cann't change password to empty string")
 		}
@@ -456,7 +462,6 @@ func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) error
 	}
 	// resize mem
 	if d.HasChange("capacity") {
-		d.SetPartial("capacity")
 		if v, ok = d.GetOk("capacity"); !ok {
 			return fmt.Errorf("cann't resize capacity to empty string")
 		}
@@ -488,7 +493,6 @@ func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) error
 			return fmt.Errorf("error on update Instance: %s", err)
 		}
 	}
-	_ = resourceRedisInstanceRead(d, meta)
 
 	// update parameter
 	// parameters no change
@@ -507,12 +511,10 @@ func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) error
 	reset := d.Get("reset_all_parameters")
 	updateReq["ResetAllParameters"] = fmt.Sprintf("%v", reset)
 	if !reset.(bool) {
-		//if params, ok = d.GetOk("parameters"); !ok {
-		//	logger.Info("instance parameters do not exist")
-		//	return nil
-		//}
-		//map类型这里获取GetOK拿到的永远是旧的 用change获取
-		_, params = d.GetChange("parameters")
+		if params, ok = d.GetOk("parameters"); !ok {
+			logger.Info("instance parameters do not exist")
+			return nil
+		}
 		param, ok1 := params.(map[string]interface{})
 		if !ok1 {
 			logger.Info("type of instance parameters must be map")
@@ -551,12 +553,11 @@ func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) error
 		MinTimeout: 1 * time.Minute,
 	}
 	_, err = stateConf.WaitForState()
-	_ = resourceRedisInstanceRead(d, meta)
 	if err != nil {
 		return fmt.Errorf("error on set instance parameter: %s", err)
 	}
-	_ = d.Set("reset_all_parameters", d.Get("reset_all_parameters"))
-	return nil
+	err = d.Set("reset_all_parameters", d.Get("reset_all_parameters"))
+	return err
 }
 
 func resourceRedisInstanceRead(d *schema.ResourceData, meta interface{}) error {
