@@ -22,8 +22,8 @@ func resourceKsyunVolume() *schema.Resource {
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(5 * time.Minute),
-			Update: schema.DefaultTimeout(1 * time.Minute),
-			Delete: schema.DefaultTimeout(1 * time.Minute),
+			Update: schema.DefaultTimeout(5 * time.Minute),
+			Delete: schema.DefaultTimeout(5 * time.Minute),
 		},
 		Schema: map[string]*schema.Schema{
 			"volume_name": {
@@ -42,10 +42,31 @@ func resourceKsyunVolume() *schema.Resource {
 				Type:     schema.TypeInt,
 				Required: true,
 			},
+
+			"online_resize": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					if !d.HasChange("size") {
+						_ = d.Set("online_resize", new)
+						return true
+					}
+					return false
+				},
+			},
+
 			"charge_type": {
 				Type:     schema.TypeString,
 				ForceNew: true,
 				Required: true,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					if old == "" && new != "" {
+						_ = d.Set("charge_type", new)
+						return true
+					}
+					return false
+				},
 			},
 			"availability_zone": {
 				Type:     schema.TypeString,
@@ -159,6 +180,7 @@ func resourceKsyunVolumeStatusRefresh(conn *ebs.Ebs, volumeId string, target []s
 		if !ok3 {
 			return nil, "", fmt.Errorf("no volume status get")
 		}
+		logger.Debug(logger.RespFormat, action, status)
 		if status == "error" {
 			return nil, "", fmt.Errorf("volume error")
 		}
@@ -200,7 +222,8 @@ func resourceKsyunVolumeRead(d *schema.ResourceData, meta interface{}) error {
 		return nil
 	}
 	SetDByResp(d, volumes[0], volumeKeys, map[string]bool{})
-	return nil
+	//online
+	return d.Set("online_resize", d.Get("online_resize"))
 }
 
 func resourceKsyunVolumeUpdate(d *schema.ResourceData, meta interface{}) error {
@@ -244,6 +267,7 @@ func resourceKsyunVolumeUpdate(d *schema.ResourceData, meta interface{}) error {
 		d.SetPartial("size")
 		update := make(map[string]interface{})
 		update["VolumeId"] = d.Id()
+		update["OnlineResize"] = d.Get("online_resize")
 		if v, ok := d.GetOk("size"); ok {
 			update["Size"] = fmt.Sprintf("%v", v.(int))
 		} else {
@@ -258,8 +282,8 @@ func resourceKsyunVolumeUpdate(d *schema.ResourceData, meta interface{}) error {
 		logger.Debug(logger.RespFormat, action, update, *resp)
 		stateConf := &resource.StateChangeConf{
 			Pending:    []string{statusPending},
-			Target:     []string{"available"},
-			Refresh:    resourceKsyunVolumeStatusRefresh(conn, d.Id(), []string{"available"}),
+			Target:     []string{"available", "in-use"},
+			Refresh:    resourceKsyunVolumeStatusRefresh(conn, d.Id(), []string{"available", "in-use"}),
 			Timeout:    d.Timeout(schema.TimeoutUpdate),
 			Delay:      3 * time.Second,
 			MinTimeout: 2 * time.Second,
