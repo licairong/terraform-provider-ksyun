@@ -406,13 +406,20 @@ func SdkRequestAutoExtra(r map[string]SdkReqTransform, d *schema.ResourceData, f
 // resource: Transform schema.Resource Ptr
 // onlyTransform : map[string]TransformType ,If set this field,Transform will with this array instead of Transform schema.Resource
 // extraMapping : map[string]SdkRequestMapping , if set this field, the key in map will instead of Transform schema.Resource key or only key
-func SdkRequestAutoMapping(d *schema.ResourceData, resource *schema.Resource, isUpdate bool, onlyTransform map[string]SdkReqTransform, extraMapping map[string]SdkRequestMapping) (map[string]interface{}, error) {
+func SdkRequestAutoMapping(d *schema.ResourceData, resource *schema.Resource, isUpdate bool, transform map[string]SdkReqTransform, extraMapping map[string]SdkRequestMapping, params ...SdkReqParameter) (map[string]interface{}, error) {
 	var req map[string]interface{}
 	var err error
 	req = make(map[string]interface{})
 	count := 1
-	if onlyTransform != nil {
-		for k, v := range onlyTransform {
+	var onlyMode bool
+	if params != nil && len(params) == 1 {
+		onlyMode = params[0].onlyTransform
+	} else {
+		onlyMode = true
+	}
+
+	if transform != nil && onlyMode {
+		for k, v := range transform {
 			if isUpdate {
 				count, err = requestUpdateMapping(d, k, v, count, nil, &req)
 			} else {
@@ -421,10 +428,18 @@ func SdkRequestAutoMapping(d *schema.ResourceData, resource *schema.Resource, is
 		}
 	} else {
 		for k, _ := range resource.Schema {
-			if isUpdate {
-				count, err = requestUpdateMapping(d, k, SdkReqTransform{}, count, extraMapping, &req)
+			if v, ok := transform[k]; ok {
+				if isUpdate {
+					count, err = requestUpdateMapping(d, k, v, count, nil, &req)
+				} else {
+					count, err = requestCreateMapping(d, k, v, count, nil, &req, false)
+				}
 			} else {
-				count, err = requestCreateMapping(d, k, SdkReqTransform{}, count, extraMapping, &req, false)
+				if isUpdate {
+					count, err = requestUpdateMapping(d, k, SdkReqTransform{}, count, extraMapping, &req)
+				} else {
+					count, err = requestCreateMapping(d, k, SdkReqTransform{}, count, extraMapping, &req, false)
+				}
 			}
 		}
 	}
@@ -436,13 +451,23 @@ func requestCreateMapping(d *schema.ResourceData, k string, t SdkReqTransform, i
 	var err error
 	var ok bool
 	var v interface{}
-	if forceGet {
-		v = d.Get(k)
-		ok = true
 
-	} else {
-		v, ok = d.GetOk(k)
+	if t.Ignore {
+		return index, err
 	}
+
+	if t.ValueFunc != nil {
+		v, ok = t.ValueFunc(d)
+	} else {
+		if forceGet {
+			v = d.Get(k)
+			ok = true
+
+		} else {
+			v, ok = d.GetOk(k)
+		}
+	}
+
 	if extraMapping == nil {
 		extraMapping = make(map[string]SdkRequestMapping)
 	}

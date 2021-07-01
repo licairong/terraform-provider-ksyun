@@ -2,6 +2,7 @@ package ksyun
 
 import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/terraform-providers/terraform-provider-ksyun/logger"
 )
 
 func purchaseTimeDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
@@ -19,6 +20,15 @@ func kcsParameterDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bo
 		return true
 	}
 	return false
+}
+
+func rdsParameterDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	if k == "parameters.#" {
+		logger.Debug(logger.RespFormat, "DemoTest", d.ConnInfo())
+		logger.Debug(logger.RespFormat, "DemoTest", d.Get("parameters"))
+		return false
+	}
+	return true
 }
 
 func kcsSecurityGroupDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
