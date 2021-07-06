@@ -364,7 +364,7 @@ func processParameters(d *schema.ResourceData, meta interface{}, paramsReq *map[
 				if v, ok := currentParameter[name]; ok {
 					var currentValue string
 					if f, ok := v.(float64); ok {
-						currentValue = strconv.Itoa(int(f))
+						currentValue = strconv.FormatInt(int64(f), 10)
 					} else if s, ok := v.(string); ok {
 						currentValue = s
 					}
@@ -379,14 +379,14 @@ func processParameters(d *schema.ResourceData, meta interface{}, paramsReq *map[
 				if _, ok := parameters[name]; ok {
 					var defaultValue string
 					if parameters[name].(map[string]interface{})["Type"] == "integer" {
-						defaultValue = strconv.Itoa(int(parameters[name].(map[string]interface{})["Default"].(float64)))
+						defaultValue = strconv.FormatInt(int64(parameters[name].(map[string]interface{})["Default"].(float64)), 10)
 					} else {
 						defaultValue = parameters[name].(map[string]interface{})["Default"].(string)
 					}
 					if v, ok := currentParameter[name]; ok {
 						var currentValue string
 						if f, ok := v.(float64); ok {
-							currentValue = strconv.Itoa(int(f))
+							currentValue = strconv.FormatInt(int64(f), 10)
 						} else if s, ok := v.(string); ok {
 							currentValue = s
 						}
@@ -554,7 +554,12 @@ func resourceKsyunMysqlReadParameter(dbParameterGroupId string, d *schema.Resour
 			for k, v := range parameter.(map[string]interface{}) {
 				m := make(map[string]interface{})
 				m["name"] = k
-				m["value"] = fmt.Sprintf("%v", v)
+				if vf, ok := v.(float64); ok {
+					m["value"] = fmt.Sprintf("%v", strconv.FormatInt(int64(vf), 10))
+				} else {
+					m["value"] = fmt.Sprintf("%v", v)
+				}
+
 				remote[k] = m
 			}
 		}
@@ -573,7 +578,8 @@ func resourceKsyunMysqlReadParameter(dbParameterGroupId string, d *schema.Resour
 }
 
 func resourceKsyunMysqlRead(d *schema.ResourceData, meta interface{}) error {
-	conn := meta.(*KsyunClient).krdsconn
+	client := meta.(*KsyunClient)
+	conn := client.krdsconn
 	req := map[string]interface{}{"DBInstanceIdentifier": d.Id()}
 	action := "DescribeDBInstances"
 	logger.Debug(logger.ReqFormat, action, req)
@@ -619,8 +625,12 @@ func resourceKsyunMysqlRead(d *schema.ResourceData, meta interface{}) error {
 		if krdsMap["instance_has_eip"] == nil {
 			krdsMap["instance_has_eip"] = false
 		}
-		logger.DebugInfo(" converted ---- %+v ", krdsMap)
 		SdkResponseAutoResourceData(d, resourceKsyunKrds(), krdsMap, extra)
+		if d.Get("force_restart") != nil {
+			_ = d.Set("force_restart", d.Get("force_restart"))
+		} else {
+			_ = d.Set("force_restart", false)
+		}
 		return resourceKsyunMysqlReadParameter(d.Get("db_parameter_group_id").(string), d, meta)
 	}
 	return nil
@@ -635,10 +645,16 @@ func modifyDBInstance(d *schema.ResourceData, meta interface{}, oldType interfac
 		"master_user_password":  {},
 		"security_group_id":     {},
 		"preferred_backup_time": {},
+		"project_id":            {},
 	}
 	modifyInstanceParam, err = SdkRequestAutoMapping(d, resourceKsyunKrds(), true, transform, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("error on updating instance , error is %s", err)
+	}
+	//modify project
+	err = ModifyProjectInstance(d.Id(), &modifyInstanceParam, meta)
+	if err != nil {
+		return fmt.Errorf("error on updating instance , error is %s", err)
 	}
 	if len(modifyInstanceParam) > 0 {
 		if _, ok := modifyInstanceParam["PreferredBackupTime"]; ok && oldType == "RR" {

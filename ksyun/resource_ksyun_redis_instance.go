@@ -3,13 +3,12 @@ package ksyun
 import (
 	"errors"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"regexp"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
-	"github.com/KscSDK/ksc-sdk-go/service/kcsv1"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/terraform-providers/terraform-provider-ksyun/logger"
@@ -31,84 +30,55 @@ func resourceRedisInstance() *schema.Resource {
 			Update: schema.DefaultTimeout(3 * time.Hour),
 		},
 		Schema: map[string]*schema.Schema{
+			"available_zone": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+				ForceNew: true,
+			},
 			"name": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
 			"mode": {
-				Type:     schema.TypeInt,
-				Optional: true,
-				Computed: true,
-				ValidateFunc: func(i interface{}, k string) (s []string, es []error) {
-					v, ok := i.(int)
-					if !ok {
-						es = append(es, fmt.Errorf("expected type of %s to be int", k))
-						return
-					}
-
-					if v != 1 && v != 2 {
-						es = append(es, fmt.Errorf("expected %s to be in 1 or 2, got %d", k, v))
-						return
-					}
-
-					return
-				},
+				Type:         schema.TypeInt,
+				Optional:     true,
+				ForceNew:     true,
+				Default:      2,
+				ValidateFunc: validation.IntBetween(1, 2),
 			},
 			"capacity": {
 				Type:     schema.TypeInt,
 				Required: true,
 			},
 			"slave_num": {
-				Type:     schema.TypeInt,
-				Required: true,
-				//Optional: true,
-				//Computed: true,
-				//ValidateFunc: validation.IntBetween(0,8),
-			},
-			"net_type": {
-				Type:     schema.TypeInt,
-				Required: true,
-				ValidateFunc: func(i interface{}, k string) (s []string, es []error) {
-					v, ok := i.(int)
-					if !ok {
-						es = append(es, fmt.Errorf("expected type of %s to be int", k))
-						return
-					}
-
-					if v != 1 && v != 2 {
-						es = append(es, fmt.Errorf("expected %s to be in 1 or 2, got %d", k, v))
-						return
-					}
-
-					return
-				},
+				Type:         schema.TypeInt,
+				Optional:     true,
+				Default:      0,
+				ForceNew:     true,
+				ValidateFunc: validation.IntBetween(0, 8),
 			},
 			"vpc_id": {
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
 			},
 			"vnet_id": {
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
 			},
 			"bill_type": {
-				Type:     schema.TypeInt,
-				Optional: true,
-				Computed: true,
+				Type:         schema.TypeInt,
+				Optional:     true,
+				Default:      5,
+				ForceNew:     true,
+				ValidateFunc: validation.IntInSlice([]int{1, 5, 87}),
 			},
 			"duration": {
 				Type:     schema.TypeString,
 				Optional: true,
-				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-					if v, ok := d.GetOk("bill_type"); ok && v == 1 {
-						return false
-					}
-					return true
-				},
-			},
-			"duration_unit": {
-				Type:     schema.TypeString,
-				Optional: true,
+				ForceNew: true,
 				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
 					if v, ok := d.GetOk("bill_type"); ok && v == 1 {
 						return false
@@ -128,24 +98,45 @@ func resourceRedisInstance() *schema.Resource {
 			},
 			"protocol": {
 				Type:     schema.TypeString,
-				Required: true,
+				Optional: true,
+				ForceNew: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"2.8",
+					"3.0",
+					"4.0",
+					"5.0",
+				}, false),
 			},
-			"cache_id": {
+			"backup_time_zone": {
 				Type:     schema.TypeString,
-				Computed: true,
-			},
-			"az": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-			"available_zone": {
-				Type:     schema.TypeString,
-				Required: true,
+				Optional: true,
 			},
 			"security_group_id": {
-				Type:             schema.TypeString,
-				Optional:         true,
-				DiffSuppressFunc: kcsSecurityGroupDiffSuppressFunc,
+				Type:     schema.TypeString,
+				Optional: true,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					if d.Get("security_group_ids") != nil {
+						if sgs, ok := d.Get("security_group_ids").(*schema.Set); ok {
+							if (*sgs).Contains(new) {
+								err := d.Set("security_group_id", new)
+								if err == nil {
+									return true
+								}
+							}
+						}
+					}
+					return false
+				},
+			},
+			"reset_all_parameters": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+			},
+			"parameters": {
+				Type:     schema.TypeMap,
+				Optional: true,
+				Elem:     schema.TypeString,
 			},
 			"security_group_ids": {
 				Type:     schema.TypeSet,
@@ -155,6 +146,20 @@ func resourceRedisInstance() *schema.Resource {
 				},
 				Set: schema.HashString,
 			},
+			"net_type": {
+				Type:     schema.TypeInt,
+				Computed: true,
+			},
+
+			"cache_id": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"az": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+
 			"engine": {
 				Type:     schema.TypeString,
 				Computed: true,
@@ -231,129 +236,272 @@ func resourceRedisInstance() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"reset_all_parameters": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Default:  false,
-			},
-			"parameters": {
-				Type:             schema.TypeMap,
-				Optional:         true,
-				DiffSuppressFunc: kcsParameterDiffSuppressFunc,
-			},
 		},
 	}
 }
-
 func resourceRedisInstanceCreate(d *schema.ResourceData, meta interface{}) error {
-	// create instance
+	conn := meta.(*KsyunClient).kcsv1conn
 	var (
 		resp *map[string]interface{}
 		err  error
-		az   string
 	)
-
-	conn := meta.(*KsyunClient).kcsv1conn
-	createReq := make(map[string]interface{})
-	createParam := []string{"available_zone", "name", "capacity", "net_type", "vpc_id", "vnet_id", "mode", "slave_num", "bill_type", "duration", "duration_unit", "pass_word", "iam_project_id", "protocol", "security_group_id"}
-	for _, v := range createParam {
-		if v1, ok := d.GetOk(v); ok {
-			createReq[Downline2Hump(v)] = fmt.Sprintf("%v", v1)
-		}
+	// valid parameters ...
+	createParam, err := resourceRedisInstanceParameterCheckAndPrepare(d, meta, false)
+	if err != nil {
+		return fmt.Errorf("error on creating instance: %s", err)
 	}
+	r := resourceRedisInstance()
+	transform := map[string]SdkReqTransform{
+		"reset_all_parameters": {Ignore: true},
+		"parameters":           {Ignore: true},
+		"protocol": {ValueFunc: func(d *schema.ResourceData) (interface{}, bool) {
+			v, ok := d.GetOk("protocol")
+			if ok {
+				return v, ok
+			} else {
+				mode := d.Get("mode").(int)
+				switch mode {
+				case 1:
+					_ = d.Set("protocol", "4.0")
+					return "4.0", true
+				case 2:
+					_ = d.Set("protocol", "4.0")
+					return "4.0", true
+				default:
+					_ = d.Set("protocol", "4.0")
+					return "4.0", true
+				}
+			}
+		}},
+	}
+	//generate req
+	createReq, err := SdkRequestAutoMapping(d, r, false, transform, nil, SdkReqParameter{
+		onlyTransform: false,
+	})
+	//create redis instance
 	action := "CreateCacheCluster"
 	logger.Debug(logger.ReqFormat, action, createReq)
-	if resp, err = conn.CreateCacheCluster(&createReq); err != nil {
+	resp, err = conn.CreateCacheCluster(&createReq)
+	if err != nil {
 		return fmt.Errorf("error on creating instance: %s", err)
 	}
 	logger.Debug(logger.RespFormat, action, createReq, *resp)
 	if resp != nil {
 		d.SetId((*resp)["Data"].(map[string]interface{})["CacheId"].(string))
 	}
-	if createReq["AvailableZone"] != nil {
-		az = createReq["AvailableZone"].(string)
-	}
-	stateConf := &resource.StateChangeConf{
-		Pending:    []string{statusPending},
-		Target:     []string{"2"},
-		Refresh:    stateRefreshForCreateFunc(conn, az, d.Id(), []string{"2"}),
-		Timeout:    d.Timeout(schema.TimeoutCreate),
-		Delay:      20 * time.Second,
-		MinTimeout: 1 * time.Minute,
-	}
-	_, err = stateConf.WaitForState()
-	_ = resourceRedisInstanceRead(d, meta)
+	err = checkRedisInstanceStatus(d, meta, d.Timeout(schema.TimeoutCreate))
 	if err != nil {
 		return fmt.Errorf("error on create Instance: %s", err)
 	}
-	// create instance parameter
-	return resourceRedisInstanceParamCreate(d, meta)
+	if len(*createParam) > 0 {
+		err = setResourceRedisInstanceParameter(d, meta, createParam)
+		if err != nil {
+			return fmt.Errorf("error on create Instance: %s", err)
+		}
+	}
+
+	return resourceRedisInstanceRead(d, meta)
 }
 
-func resourceRedisInstanceParamCreate(d *schema.ResourceData, meta interface{}) error {
+func setResourceRedisInstanceParameter(d *schema.ResourceData, meta interface{}, createReq *map[string]interface{}) error {
 	var (
-		resp  *map[string]interface{}
-		param map[string]interface{}
-		az    string
-		err   error
+		resp *map[string]interface{}
+		err  error
 	)
-	v1, ok := d.GetOk("parameters")
-	if !ok || v1 == nil {
-		return nil
-	}
-	v2, _ := d.GetOk("reset_all_parameters")
-	if !v2.(bool) {
-		conn := meta.(*KsyunClient).kcsv1conn
-		createReq := make(map[string]interface{})
-		if az, ok := d.GetOk("available_zone"); ok {
-			createReq["AvailableZone"] = az
-		}
-		createReq["CacheId"] = d.Get("cache_id")
-		createReq["Protocol"] = d.Get("protocol")
-		createReq["ResetAllParameters"] = fmt.Sprintf("%v", d.Get("reset_all_parameters"))
+	(*createReq)["CacheId"] = d.Id()
+	(*createReq)["Protocol"] = d.Get("protocol")
 
-		if param, ok = v1.(map[string]interface{}); !ok {
-			return fmt.Errorf("expected type of parameter to not be map")
-		}
-		if len(param) == 0 {
-			return nil
-		}
-		if err = validParam(d); err != nil {
-			return err
-		}
-		params := v1.(map[string]interface{})
-		var i int
-		for k, v := range params {
-			i = i + 1
-			createReq[fmt.Sprintf("%v%v", "Parameters.ParameterName.", i)] = fmt.Sprintf("%v", k)
-			createReq[fmt.Sprintf("%v%v", "Parameters.ParameterValue.", i)] = fmt.Sprintf("%v", v)
-		}
-		action := "SetCacheParameters"
-		logger.Debug(logger.ReqFormat, action, createReq)
-		if resp, err = conn.SetCacheParameters(&createReq); err != nil {
-			return fmt.Errorf("error on set instance parameter: %s", err)
-		}
-		logger.Debug(logger.RespFormat, action, createReq, *resp)
-		if createReq["AvailableZone"] != nil {
-			az = createReq["AvailableZone"].(string)
-		}
-		stateConf := &resource.StateChangeConf{
-			Pending:    []string{statusPending},
-			Target:     []string{"2"},
-			Refresh:    stateRefreshForOperateFunc(conn, az, d.Id(), []string{"2"}),
-			Timeout:    d.Timeout(schema.TimeoutUpdate),
-			Delay:      10 * time.Second,
-			MinTimeout: 1 * time.Minute,
-		}
-		_, err = stateConf.WaitForState()
-		//_ = resourceRedisInstanceParamRead(d, meta)
-		if err != nil {
-			return fmt.Errorf("error on set instance parameter: %s", err)
-		}
-	} else {
-		return d.Set("reset_all_parameters", true)
+	integrationAzConf := &IntegrationAzConf{
+		resourceData: d,
+		client:       meta.(*KsyunClient),
+		req:          createReq,
+		field:        "available_zone",
+		requestFunc: func() (*map[string]interface{}, error) {
+			conn := meta.(*KsyunClient).kcsv1conn
+			return conn.SetCacheParameters(createReq)
+		},
 	}
-	return nil
+
+	action := "SetCacheParameters"
+	logger.Debug(logger.ReqFormat, action, *createReq)
+	resp, err = integrationAzConf.integrationAz()
+	if err != nil {
+		return fmt.Errorf("error on set instance parameter: %s", err)
+	}
+	logger.Debug(logger.RespFormat, action, *createReq, *resp)
+	err = checkRedisInstanceStatus(d, meta, d.Timeout(schema.TimeoutUpdate))
+	if err != nil {
+		return fmt.Errorf("error on create Instance: %s", err)
+	}
+	return err
+}
+
+func resourceRedisInstanceParameterCheckAndPrepare(d *schema.ResourceData, meta interface{}, isUpdate bool) (*map[string]interface{}, error) {
+	var (
+		reset bool
+		resp  *map[string]interface{}
+		err   error
+		index int
+	)
+	conn := meta.(*KsyunClient).kcsv1conn
+	req := make(map[string]interface{})
+
+	parameters := make(map[string]string)
+	if !isUpdate || (isUpdate && d.HasChange("parameters")) {
+		if data, ok := d.GetOk("parameters"); ok {
+			for k, v := range data.(map[string]interface{}) {
+				parameters[k] = v.(string)
+			}
+		}
+	}
+
+	//reset_all_parameters and parameters Conflict
+	if r, ok := d.GetOk("reset_all_parameters"); ok && !isUpdate && r.(bool) && len(parameters) > 0 {
+		err = fmt.Errorf("parameters is not empty,can not set reset_all_parameters true")
+		return &req, err
+	}
+	if r, ok := d.GetOk("reset_all_parameters"); ok && isUpdate && r.(bool) {
+		if data, ok := d.GetOk("parameters"); ok {
+			if len(data.(map[string]interface{})) > 0 {
+				err = fmt.Errorf("parameters is not empty,can not set reset_all_parameters true")
+				return &req, err
+			}
+		}
+		if d.HasChange("reset_all_parameters") {
+			reset = true
+		}
+
+	}
+
+	// condition on reset_all_parameters
+	if isUpdate && reset {
+		logger.Debug(logger.ReqFormat, "DemoTest", reset)
+		req["ResetAllParameters"] = reset
+
+		return &req, d.Set("reset_all_parameters", reset)
+	}
+
+	//condition on set parameters, check parameter key and value valid
+	action := "DescribeCacheDefaultParameters"
+	logger.Debug(logger.ReqFormat, action, nil)
+	resp, err = conn.DescribeCacheDefaultParameters(&map[string]interface{}{})
+	logger.Debug(logger.RespFormat, action, nil, resp)
+	if err != nil {
+		return &req, fmt.Errorf("error on DescribeCacheDefaultParameters: %s", err)
+	}
+	data, err := getSdkValue("Data", *resp)
+	if err != nil {
+		return &req, fmt.Errorf("error on DescribeCacheDefaultParameters: %s", err)
+	}
+	defaultParameters := make(map[string]interface{})
+	for _, item := range data.([]interface{}) {
+		name, err := getSdkValue("name", item)
+		if err != nil {
+			continue
+		}
+		defaultParameters[name.(string)] = item
+	}
+	// query current parameter
+	cacheParameters := make(map[string]string)
+	if d.Id() != "" {
+		reqParam := make(map[string]interface{})
+		reqParam["CacheId"] = d.Id()
+		integrationAzConf := &IntegrationAzConf{
+			resourceData: d,
+			client:       meta.(*KsyunClient),
+			req:          &reqParam,
+			field:        "available_zone",
+			requestFunc: func() (*map[string]interface{}, error) {
+				conn := meta.(*KsyunClient).kcsv1conn
+				return conn.DescribeCacheParameters(&reqParam)
+			},
+		}
+		resp, err = integrationAzConf.integrationAz()
+		if err != nil {
+			return &req, fmt.Errorf("error on DescribeCacheParameters: %s", err)
+		}
+		data, err = getSdkValue("Data", *resp)
+		for _, item := range data.([]interface{}) {
+			name, err := getSdkValue("name", item)
+			if err != nil {
+				continue
+			}
+			currentValue, err := getSdkValue("currentValue", item)
+			cacheParameters[name.(string)] = currentValue.(string)
+		}
+	}
+	for k, v := range parameters {
+		if _, ok := defaultParameters[k]; !ok {
+			return &req, fmt.Errorf("error on paramerter %v not support", k)
+		}
+		paramType, err := getSdkValue("validity.type", defaultParameters[k])
+		if err != nil {
+			continue
+		}
+		switch paramType.(string) {
+		case "enum":
+			values, err := getSdkValue("validity.values", defaultParameters[k])
+			if err != nil {
+				break
+			}
+			valid := false
+			for _, v1 := range values.([]interface{}) {
+				if v1.(string) == v {
+					valid = true
+				}
+			}
+			if !valid {
+				return &req, fmt.Errorf("error on paramerter %v value must in  %v ", k, values)
+			}
+		case "range":
+			minStr, err := getSdkValue("validity.min", defaultParameters[k])
+			if err != nil {
+				break
+			}
+			maxStr, err := getSdkValue("validity.max", defaultParameters[k])
+			if err != nil {
+				break
+			}
+			min, err := strconv.Atoi(minStr.(string))
+			if err != nil {
+				break
+			}
+			max, err := strconv.Atoi(maxStr.(string))
+			if err != nil {
+				break
+			}
+			current, err := strconv.Atoi(v)
+			if err != nil {
+				return &req, fmt.Errorf("error on paramerter %v value must number ", k)
+			}
+			if current > max || current < min {
+				return &req, fmt.Errorf("error on paramerter %v value must in %v,%v ", k, minStr, maxStr)
+			}
+		case "regexp":
+			value, err := getSdkValue("validity.value", defaultParameters[k])
+			if err != nil {
+				break
+			}
+			reg := regexp.MustCompile(value.(string))
+			if reg == nil {
+				continue
+			}
+			if !reg.MatchString(v) {
+				return &req, fmt.Errorf("error on paramerter %v value must match %v ", k, value)
+			}
+		default:
+			break
+		}
+
+		if cv, ok := cacheParameters[k]; ok && cv == v {
+			continue
+		}
+		index = index + 1
+		req[fmt.Sprintf("%v%v", "Parameters.ParameterName.", index)] = k
+		req[fmt.Sprintf("%v%v", "Parameters.ParameterValue.", index)] = v
+	}
+
+	return &req, d.Set("reset_all_parameters", reset)
 }
 
 func resourceRedisInstanceDelete(d *schema.ResourceData, meta interface{}) error {
@@ -362,38 +510,38 @@ func resourceRedisInstanceDelete(d *schema.ResourceData, meta interface{}) error
 		err  error
 	)
 
-	conn := meta.(*KsyunClient).kcsv1conn
 	deleteReq := make(map[string]interface{})
 	deleteReq["CacheId"] = d.Id()
-	if az, ok := d.GetOk("available_zone"); ok {
-		deleteReq["AvailableZone"] = az
+
+	integrationAzConf := &IntegrationAzConf{
+		resourceData: d,
+		client:       meta.(*KsyunClient),
+		req:          &deleteReq,
+		field:        "available_zone",
+		requestFunc: func() (*map[string]interface{}, error) {
+			conn := meta.(*KsyunClient).kcsv1conn
+			return conn.DeleteCacheCluster(&deleteReq)
+		},
 	}
+
 	action := "DeleteCacheCluster"
 	logger.Debug(logger.ReqFormat, action, deleteReq)
-	if resp, err = conn.DeleteCacheCluster(&deleteReq); err != nil {
+	resp, err = integrationAzConf.integrationAz()
+	if err != nil {
 		return fmt.Errorf("error on deleting instance %q, %s", d.Id(), err)
 	}
 	logger.Debug(logger.RespFormat, action, deleteReq, *resp)
 	return resource.Retry(20*time.Minute, func() *resource.RetryError {
 		var (
-			resp *map[string]interface{}
-			err  error
+			err error
 		)
-
-		queryReq := make(map[string]interface{})
-		queryReq["CacheId"] = d.Id()
-		if az, ok := d.GetOk("available_zone"); ok {
-			queryReq["AvailableZone"] = az
-		}
-		action := "DescribeCacheCluster"
-		logger.Debug(logger.ReqFormat, action, queryReq)
-		if resp, err = conn.DescribeCacheCluster(&queryReq); err != nil {
+		_, err = describeRedisInstance(d, meta)
+		if err != nil {
 			if validateExists(err) {
 				return nil
 			}
 			return resource.NonRetryableError(err)
 		}
-		logger.Debug(logger.RespFormat, action, queryReq, *resp)
 		return resource.RetryableError(errors.New("deleting"))
 	})
 }
@@ -402,15 +550,190 @@ func validateExists(err error) bool {
 	return strings.Contains(strings.ToLower(err.Error()), "cannot be found") || strings.Contains(strings.ToLower(err.Error()), "invalidaction")
 }
 
-func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) (err error) {
+func modifyRedisInstanceNameAndProject(d *schema.ResourceData, meta interface{}) error {
 	var (
-		resp   *map[string]interface{}
-		v      interface{}
-		params interface{}
-		ok     bool
-		az     string
+		err  error
+		req  map[string]interface{}
+		resp *map[string]interface{}
 	)
 
+	transform := map[string]SdkReqTransform{
+		"name":           {},
+		"iam_project_id": {mapping: "ProjectId"},
+	}
+	req, err = SdkRequestAutoMapping(d, resourceRedisInstance(), true, transform, nil)
+	if err != nil {
+		return fmt.Errorf("error on updating instance , error is %s", err)
+	}
+	//modify project
+	err = ModifyProjectInstance(d.Id(), &req, meta)
+	if err != nil {
+		return fmt.Errorf("error on updating instance iam_project_id , error is %s", err)
+	}
+
+	if len(req) > 0 {
+		req["CacheId"] = d.Id()
+		integrationAzConf := &IntegrationAzConf{
+			resourceData: d,
+			client:       meta.(*KsyunClient),
+			req:          &req,
+			field:        "available_zone",
+			requestFunc: func() (*map[string]interface{}, error) {
+				conn := meta.(*KsyunClient).kcsv1conn
+				return conn.RenameCacheCluster(&req)
+			},
+		}
+		action := "RenameCacheCluster"
+		logger.Debug(logger.ReqFormat, action, req)
+		resp, err = integrationAzConf.integrationAz()
+		if err != nil {
+			return fmt.Errorf("error on rename instance %q, %s", d.Id(), err)
+		}
+		logger.Debug(logger.RespFormat, action, req, *resp)
+	}
+	return err
+}
+
+func modifyRedisInstancePassword(d *schema.ResourceData, meta interface{}) error {
+	var (
+		err  error
+		req  map[string]interface{}
+		resp *map[string]interface{}
+	)
+
+	transform := map[string]SdkReqTransform{
+		"pass_word": {mapping: "Password"},
+	}
+	req, err = SdkRequestAutoMapping(d, resourceRedisInstance(), true, transform, nil)
+	if err != nil {
+		return fmt.Errorf("error on updating instance , error is %s", err)
+	}
+
+	if len(req) > 0 {
+		req["CacheId"] = d.Id()
+		integrationAzConf := &IntegrationAzConf{
+			resourceData: d,
+			client:       meta.(*KsyunClient),
+			req:          &req,
+			field:        "available_zone",
+			requestFunc: func() (*map[string]interface{}, error) {
+				conn := meta.(*KsyunClient).kcsv1conn
+				return conn.UpdatePassword(&req)
+			},
+		}
+		action := "UpdatePassword"
+		logger.Debug(logger.ReqFormat, action, req)
+		resp, err = integrationAzConf.integrationAz()
+		if err != nil {
+			return fmt.Errorf("error on UpdatePassword instance %q, %s", d.Id(), err)
+		}
+		logger.Debug(logger.RespFormat, action, req, *resp)
+	}
+	return err
+}
+
+func modifyRedisInstanceSpec(d *schema.ResourceData, meta interface{}) error {
+	var (
+		err  error
+		req  map[string]interface{}
+		resp *map[string]interface{}
+	)
+
+	transform := map[string]SdkReqTransform{
+		"capacity": {},
+	}
+	req, err = SdkRequestAutoMapping(d, resourceRedisInstance(), true, transform, nil)
+	if err != nil {
+		return fmt.Errorf("error on updating instance , error is %s", err)
+	}
+
+	if len(req) > 0 {
+		req["CacheId"] = d.Id()
+		integrationAzConf := &IntegrationAzConf{
+			resourceData: d,
+			client:       meta.(*KsyunClient),
+			req:          &req,
+			field:        "available_zone",
+			requestFunc: func() (*map[string]interface{}, error) {
+				conn := meta.(*KsyunClient).kcsv1conn
+				return conn.ResizeCacheCluster(&req)
+			},
+		}
+		action := "ResizeCacheCluster"
+		logger.Debug(logger.ReqFormat, action, req)
+		resp, err = integrationAzConf.integrationAz()
+		if err != nil {
+			return fmt.Errorf("error on ResizeCacheCluster instance %q, %s", d.Id(), err)
+		}
+		logger.Debug(logger.RespFormat, action, req, *resp)
+		err = checkRedisInstanceStatus(d, meta, d.Timeout(schema.TimeoutUpdate))
+		if err != nil {
+			return fmt.Errorf("error on ResizeCacheCluster instance %q, %s", d.Id(), err)
+		}
+	}
+	return err
+}
+
+func modifyRedisInstanceSg(d *schema.ResourceData, meta interface{}) error {
+	var (
+		err  error
+		req  map[string]interface{}
+		resp *map[string]interface{}
+	)
+
+	transform := map[string]SdkReqTransform{
+		"security_group_id": {},
+	}
+	req, err = SdkRequestAutoMapping(d, resourceRedisInstance(), true, transform, nil)
+	if err != nil {
+		return fmt.Errorf("error on updating instance , error is %s", err)
+	}
+
+	if len(req) > 0 {
+		oldSg, newSg := d.GetChange("security_group_id")
+		req["CacheId.1"] = d.Id()
+		req["SecurityGroupId"] = oldSg
+		integrationAzConf := &IntegrationAzConf{
+			resourceData: d,
+			client:       meta.(*KsyunClient),
+			req:          &req,
+			field:        "available_zone",
+			requestFunc: func() (*map[string]interface{}, error) {
+				conn := meta.(*KsyunClient).kcsv1conn
+				return conn.DeallocateSecurityGroup(&req)
+			},
+		}
+		action := "DeallocateSecurityGroup"
+		logger.Debug(logger.ReqFormat, action, req)
+		resp, err = integrationAzConf.integrationAz()
+		if err != nil {
+			return fmt.Errorf("error on DeallocateSecurityGroup instance %q, %s", d.Id(), err)
+		}
+		logger.Debug(logger.RespFormat, action, req, *resp)
+
+		req["SecurityGroupId"] = newSg
+		integrationAzConf = &IntegrationAzConf{
+			resourceData: d,
+			client:       meta.(*KsyunClient),
+			req:          &req,
+			field:        "available_zone",
+			requestFunc: func() (*map[string]interface{}, error) {
+				conn := meta.(*KsyunClient).kcsv1conn
+				return conn.AllocateSecurityGroup(&req)
+			},
+		}
+		action = "AllocateSecurityGroup"
+		logger.Debug(logger.ReqFormat, action, req)
+		resp, err = integrationAzConf.integrationAz()
+		if err != nil {
+			return fmt.Errorf("error on AllocateSecurityGroup instance %q, %s", d.Id(), err)
+		}
+		logger.Debug(logger.RespFormat, action, req, *resp)
+	}
+	return err
+}
+
+func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) (err error) {
 	defer func(d *schema.ResourceData, meta interface{}) {
 		_err := resourceRedisInstanceRead(d, meta)
 		if err == nil {
@@ -422,142 +745,70 @@ func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) (err 
 		}
 
 	}(d, meta)
-	conn := meta.(*KsyunClient).kcsv1conn
+	// valid parameters ...
+	createParam, err := resourceRedisInstanceParameterCheckAndPrepare(d, meta, true)
+	if err != nil {
+		return fmt.Errorf("error on update instance: %s", err)
+	}
+
 	// rename
-	if d.HasChange("name") {
-		if v, ok = d.GetOk("name"); !ok {
-			return fmt.Errorf("cann't change name to empty string")
-		}
-		rename := make(map[string]interface{})
-		rename["CacheId"] = d.Id()
-		rename["Name"] = v.(string)
-		if az, ok := d.GetOk("available_zone"); ok {
-			rename["AvailableZone"] = az
-		}
-		action := "RenameCacheCluster"
-		logger.Debug(logger.ReqFormat, action, rename)
-		if resp, err = conn.RenameCacheCluster(&rename); err != nil {
-			return fmt.Errorf("error on rename instance %q, %s", d.Id(), err)
-		}
-		logger.Debug(logger.RespFormat, action, rename, *resp)
+	err = modifyRedisInstanceNameAndProject(d, meta)
+	if err != nil {
+		return fmt.Errorf("error on update instance: %s", err)
 	}
 	// update password
-	if d.HasChange("pass_word") {
-		if v, ok = d.GetOk("pass_word"); !ok {
-			return fmt.Errorf("cann't change password to empty string")
-		}
-		password := make(map[string]interface{})
-		password["CacheId"] = d.Id()
-		password["Password"] = v.(string)
-		password["Mode"] = d.Get("mode")
-		if az, ok := d.GetOk("available_zone"); ok {
-			password["AvailableZone"] = az
-		}
-		action := "UpdatePassword"
-		logger.Debug(logger.ReqFormat, action, password)
-		if resp, err = conn.UpdatePassword(&password); err != nil {
-			return fmt.Errorf("error on update instance password %q, %s", d.Id(), err)
-		}
-		logger.Debug(logger.RespFormat, action, password, *resp)
+	err = modifyRedisInstancePassword(d, meta)
+	if err != nil {
+		return fmt.Errorf("error on update instance: %s", err)
+	}
+	//sg
+	err = modifyRedisInstanceSg(d, meta)
+	if err != nil {
+		return fmt.Errorf("error on update instance: %s", err)
 	}
 	// resize mem
-	if d.HasChange("capacity") {
-		if v, ok = d.GetOk("capacity"); !ok {
-			return fmt.Errorf("cann't resize capacity to empty string")
-		}
-		resize := make(map[string]interface{})
-		resize["CacheId"] = d.Id()
-		resize["Capacity"] = fmt.Sprintf("%v", v.(int))
-		if az, ok := d.GetOk("available_zone"); ok {
-			resize["AvailableZone"] = az
-		}
-		action := "ResizeCacheCluster"
-		logger.Debug(logger.ReqFormat, action, resize)
-		if resp, err = conn.ResizeCacheCluster(&resize); err != nil {
-			return fmt.Errorf("error on resize instance %q, %s", d.Id(), err)
-		}
-		logger.Debug(logger.RespFormat, action, resize, *resp)
-		if resize["AvailableZone"] != nil {
-			az = resize["AvailableZone"].(string)
-		}
-		stateConf := &resource.StateChangeConf{
-			Pending:    []string{statusPending},
-			Target:     []string{"2"},
-			Refresh:    stateRefreshForOperateFunc(conn, az, d.Id(), []string{"2"}),
-			Timeout:    d.Timeout(schema.TimeoutUpdate),
-			Delay:      20 * time.Second,
-			MinTimeout: 1 * time.Minute,
-		}
-		_, err = stateConf.WaitForState()
-		if err != nil {
-			return fmt.Errorf("error on update Instance: %s", err)
-		}
+	err = modifyRedisInstanceSpec(d, meta)
+	if err != nil {
+		return fmt.Errorf("error on update instance: %s", err)
 	}
 
 	// update parameter
-	// parameters no change
-	if !d.HasChange("reset_all_parameters") && !d.HasChange("parameters") {
-		logger.Info("instance parameters have not changed")
-		return nil
-	}
-
-	updateReq := make(map[string]interface{})
-	updateReq["CacheId"] = d.Get("cache_id")
-	updateReq["protocol"] = d.Get("protocol")
-	if az, ok := d.GetOk("available_zone"); ok {
-		updateReq["AvailableZone"] = az
-	}
-
-	reset := d.Get("reset_all_parameters")
-	updateReq["ResetAllParameters"] = fmt.Sprintf("%v", reset)
-	if !reset.(bool) {
-		if params, ok = d.GetOk("parameters"); !ok {
-			logger.Info("instance parameters do not exist")
-			return nil
+	if len(*createParam) > 0 {
+		err = setResourceRedisInstanceParameter(d, meta, createParam)
+		if err != nil {
+			return fmt.Errorf("error on create Instance: %s", err)
 		}
-		param, ok1 := params.(map[string]interface{})
-		if !ok1 {
-			logger.Info("type of instance parameters must be map")
-			return nil
-		}
-		if len(param) == 0 {
-			logger.Info("instance parameters size : 0")
-			return nil
-		}
-		if err := validParam(d); err != nil {
-			return err
-		}
-		var i int
-		for k, v := range param {
-			i = i + 1
-			updateReq[fmt.Sprintf("%v%v", "Parameters.ParameterName.", i)] = fmt.Sprintf("%v", k)
-			updateReq[fmt.Sprintf("%v%v", "Parameters.ParameterValue.", i)] = fmt.Sprintf("%v", v)
-		}
-	}
-
-	action := "SetCacheParameters"
-	logger.Debug(logger.ReqFormat, action, updateReq)
-	if resp, err = conn.SetCacheParameters(&updateReq); err != nil {
-		return fmt.Errorf("error on set instance parameter: %s", err)
-	}
-	logger.Debug(logger.RespFormat, action, updateReq, *resp)
-	if updateReq["AvailableZone"] != nil {
-		az = updateReq["AvailableZone"].(string)
-	}
-	stateConf := &resource.StateChangeConf{
-		Pending:    []string{statusPending},
-		Target:     []string{"2"},
-		Refresh:    stateRefreshForOperateFunc(conn, az, d.Id(), []string{"2"}),
-		Timeout:    d.Timeout(schema.TimeoutCreate),
-		Delay:      10 * time.Second,
-		MinTimeout: 1 * time.Minute,
-	}
-	_, err = stateConf.WaitForState()
-	if err != nil {
-		return fmt.Errorf("error on set instance parameter: %s", err)
 	}
 	err = d.Set("reset_all_parameters", d.Get("reset_all_parameters"))
 	return err
+}
+
+func describeRedisInstance(d *schema.ResourceData, meta interface{}) (*map[string]interface{}, error) {
+	var (
+		resp *map[string]interface{}
+		err  error
+	)
+	queryReq := make(map[string]interface{})
+	queryReq["CacheId"] = d.Id()
+
+	integrationAzConf := &IntegrationAzConf{
+		resourceData: d,
+		client:       meta.(*KsyunClient),
+		req:          &queryReq,
+		field:        "available_zone",
+		requestFunc: func() (*map[string]interface{}, error) {
+			conn := meta.(*KsyunClient).kcsv1conn
+			return conn.DescribeCacheCluster(&queryReq)
+		},
+	}
+	action := "DescribeCacheCluster"
+	logger.Debug(logger.ReqFormat, action, queryReq)
+	resp, err = integrationAzConf.integrationAz()
+	if err != nil {
+		return resp, err
+	}
+	logger.Debug(logger.RespFormat, action, queryReq, *resp)
+	return resp, err
 }
 
 func resourceRedisInstanceRead(d *schema.ResourceData, meta interface{}) error {
@@ -567,79 +818,92 @@ func resourceRedisInstanceRead(d *schema.ResourceData, meta interface{}) error {
 		ok   bool
 		err  error
 	)
-
-	conn := meta.(*KsyunClient).kcsv1conn
-	queryReq := make(map[string]interface{})
-	queryReq["CacheId"] = d.Id()
-	if az, ok := d.GetOk("available_zone"); ok {
-		queryReq["AvailableZone"] = az
-	}
-	action := "DescribeCacheCluster"
-	logger.Debug(logger.ReqFormat, action, queryReq)
-	if resp, err = conn.DescribeCacheCluster(&queryReq); err != nil {
+	resp, err = describeRedisInstance(d, meta)
+	if err != nil {
 		return fmt.Errorf("error on reading instance %q, %s", d.Id(), err)
 	}
-	logger.Debug(logger.RespFormat, action, queryReq, *resp)
 	if item, ok = (*resp)["Data"].(map[string]interface{}); !ok {
 		return nil
 	}
-	//result := make(map[string]interface{})
-	//for k, v := range item {
-	//	if k == "protocol" || k == "slaveNum" || !redisInstanceKeys[k] {
-	//		continue
-	//	}
-	//	result[Hump2Downline(k)] = v
-	//}
-	//for k, v := range result {
-	//	if err := d.Set(k, v); err != nil {
-	//		return fmt.Errorf("error set data %v :%v", v, err)
-	//	}
-	//}
-	extra := make(map[string]SdkResponseMapping)
-	extra["az"] = SdkResponseMapping{
-		Field: "available_zone",
+	// merge some field
+	add := make(map[string]interface{})
+	for k, v := range item {
+		if k == "az" {
+			add["AvailableZone"] = v
+		}
 	}
-
+	if _, ok = item["slaveNum"]; !ok {
+		item["slaveNum"] = 0
+	}
+	for k, v := range add {
+		item[k] = v
+	}
+	extra := make(map[string]SdkResponseMapping)
 	extra["protocol"] = SdkResponseMapping{
 		Field: "protocol",
 		FieldRespFunc: func(i interface{}) interface{} {
 			return strings.Replace(i.(string), "redis ", "", -1)
 		},
 	}
-
 	extra["size"] = SdkResponseMapping{
 		Field: "capacity",
 	}
 	SdkResponseAutoResourceData(d, resourceRedisInstance(), item, extra)
 
-	extra["az"] = SdkResponseMapping{
-		Field: "az",
-	}
-	SdkResponseAutoResourceData(d, resourceRedisInstance(), item, extra)
-	//resourceRedisInstanceParamRead(d, meta)
-	_ = resourceRedisInstanceParamRead(d, meta)
-	//force set reset_all_parameters false on read
-	_ = d.Set("reset_all_parameters", false)
-
-	//get SecurityGroups
-	querySg := make(map[string]interface{})
-	querySg["CacheId"] = d.Id()
-	if resp, err = conn.DescribeSecurityGroups(&querySg); err != nil {
+	//merge securityGroupIds
+	err = resourceRedisInstanceSgRead(d, meta)
+	if err != nil {
 		return fmt.Errorf("error on reading instance %q, %s", d.Id(), err)
 	}
-	if item, ok = (*resp)["Data"].(map[string]interface{}); !ok {
-		return nil
+	//merge parameters
+	err = resourceRedisInstanceParamRead(d, meta)
+	if err != nil {
+		return fmt.Errorf("error on reading instance %q, %s", d.Id(), err)
 	}
-	var itemSetSlice []string
-	if sgs, ok := item["list"].([]interface{}); ok {
-		for _, sg := range sgs {
-			if info, ok := sg.(map[string]interface{}); ok {
-				itemSetSlice = append(itemSetSlice, info["securityGroupId"].(string))
+	return nil
+}
+
+func resourceRedisInstanceSgRead(d *schema.ResourceData, meta interface{}) error {
+	var (
+		resp *map[string]interface{}
+		err  error
+	)
+
+	querySg := make(map[string]interface{})
+	querySg["CacheId"] = d.Id()
+
+	integrationAzConf := &IntegrationAzConf{
+		resourceData: d,
+		client:       meta.(*KsyunClient),
+		req:          &querySg,
+		field:        "available_zone",
+		requestFunc: func() (*map[string]interface{}, error) {
+			conn := meta.(*KsyunClient).kcsv1conn
+			return conn.DescribeSecurityGroups(&querySg)
+		},
+	}
+
+	resp, err = integrationAzConf.integrationAz()
+	if err != nil {
+		return err
+	}
+	if item, ok := (*resp)["Data"].(map[string]interface{}); ok {
+		var itemSetSlice []string
+		if sgs, ok := item["list"].([]interface{}); ok {
+			for _, sg := range sgs {
+				if info, ok := sg.(map[string]interface{}); ok {
+					itemSetSlice = append(itemSetSlice, info["securityGroupId"].(string))
+				}
 			}
 		}
+		if len(itemSetSlice) > 0 && d.Get("security_group_id") == nil || d.Get("security_group_id").(string) == "" {
+			err = d.Set("security_group_id", itemSetSlice[0])
+			if err != nil {
+				return err
+			}
+		}
+		return d.Set("security_group_ids", itemSetSlice)
 	}
-	_ = d.Set("security_group_ids", itemSetSlice)
-
 	return nil
 }
 
@@ -648,35 +912,66 @@ func resourceRedisInstanceParamRead(d *schema.ResourceData, meta interface{}) er
 		resp *map[string]interface{}
 		err  error
 	)
-	conn := meta.(*KsyunClient).kcsv1conn
 	readReq := make(map[string]interface{})
 	readReq["CacheId"] = d.Id()
-	if az, ok := d.GetOk("available_zone"); ok {
-		readReq["AvailableZone"] = az
+
+	integrationAzConf := &IntegrationAzConf{
+		resourceData: d,
+		client:       meta.(*KsyunClient),
+		req:          &readReq,
+		field:        "available_zone",
+		requestFunc: func() (*map[string]interface{}, error) {
+			conn := meta.(*KsyunClient).kcsv1conn
+			return conn.DescribeCacheParameters(&readReq)
+		},
 	}
+
 	action := "DescribeCacheParameters"
 	logger.Debug(logger.ReqFormat, action, readReq)
-	if resp, err = conn.DescribeCacheParameters(&readReq); err != nil {
+	resp, err = integrationAzConf.integrationAz()
+	if err != nil {
 		return fmt.Errorf("error on reading instance parameter %q, %s", d.Id(), err)
 	}
 	logger.Debug(logger.RespFormat, action, readReq, *resp)
 	data := (*resp)["Data"].([]interface{})
 	if len(data) == 0 {
-		logger.Info("instance parameters result size : 0")
 		return nil
 	}
 	result := make(map[string]interface{})
+	parameter := make(map[string]interface{})
 	for _, d := range data {
 		param := d.(map[string]interface{})
 		result[param["name"].(string)] = fmt.Sprintf("%v", param["currentValue"])
 	}
-	if err := d.Set("parameters", result); err != nil {
+	if local, ok := d.GetOk("parameters"); ok {
+		for k, v := range local.(map[string]interface{}) {
+			if _, ok = result[k]; ok {
+				parameter[k] = v
+			}
+		}
+	}
+
+	if err := d.Set("parameters", parameter); err != nil {
 		return fmt.Errorf("error set data %v :%v", result, err)
 	}
 	return nil
 }
 
-func stateRefreshForCreateFunc(client *kcsv1.Kcsv1, az, instanceId string, target []string) resource.StateRefreshFunc {
+func checkRedisInstanceStatus(d *schema.ResourceData, meta interface{}, timeout time.Duration) error {
+	var err error
+	stateConf := &resource.StateChangeConf{
+		Pending:    []string{statusPending},
+		Target:     []string{"2"},
+		Refresh:    stateRefreshForRedis(d, meta, []string{"2"}),
+		Timeout:    timeout,
+		Delay:      20 * time.Second,
+		MinTimeout: 1 * time.Minute,
+	}
+	_, err = stateConf.WaitForState()
+	return err
+}
+
+func stateRefreshForRedis(d *schema.ResourceData, meta interface{}, target []string) resource.StateRefreshFunc {
 	return func() (interface{}, string, error) {
 		var (
 			resp *map[string]interface{}
@@ -685,14 +980,10 @@ func stateRefreshForCreateFunc(client *kcsv1.Kcsv1, az, instanceId string, targe
 			err  error
 		)
 
-		queryReq := map[string]interface{}{"CacheId": instanceId}
-		queryReq["AvailableZone"] = az
-		action := "DescribeCacheCluster"
-		logger.Debug(logger.ReqFormat, action, queryReq)
-		if resp, err = client.DescribeCacheCluster(&queryReq); err != nil {
+		resp, err = describeRedisInstance(d, meta)
+		if err != nil {
 			return nil, "", err
 		}
-		logger.Debug(logger.RespFormat, action, queryReq, *resp)
 		if item, ok = (*resp)["Data"].(map[string]interface{}); !ok {
 			return nil, "", fmt.Errorf("no instance information was queried.%s", "")
 		}
@@ -717,432 +1008,4 @@ func stateRefreshForCreateFunc(client *kcsv1.Kcsv1, az, instanceId string, targe
 		}
 		return resp, state, nil
 	}
-}
-
-func stateRefreshForOperateFunc(client *kcsv1.Kcsv1, az, instanceId string, target []string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-		var (
-			resp *map[string]interface{}
-			item map[string]interface{}
-			ok   bool
-			err  error
-		)
-
-		queryReq := map[string]interface{}{"CacheId": instanceId}
-		queryReq["AvailableZone"] = az
-		action := "DescribeCacheCluster"
-		logger.Debug(logger.ReqFormat, action, queryReq)
-		if resp, err = client.DescribeCacheCluster(&queryReq); err != nil {
-			return nil, "", err
-		}
-		logger.Debug(logger.RespFormat, action, queryReq, *resp)
-		if item, ok = (*resp)["Data"].(map[string]interface{}); !ok {
-			return nil, "", fmt.Errorf("no instance information was queried.%s", "")
-		}
-		status := int(item["status"].(float64))
-		if status == 0 || status == 99 {
-			return nil, "", fmt.Errorf("instance operate error,status:%v", status)
-		}
-		state := strconv.Itoa(status)
-		for k, v := range target {
-			if v == state {
-				return resp, state, nil
-			}
-			if k == len(target)-1 {
-				state = statusPending
-			}
-		}
-
-		return resp, state, nil
-	}
-}
-
-func validParam(d *schema.ResourceData) error {
-	var (
-		param map[string]interface{}
-		ok    bool
-	)
-	protocol := d.Get("protocol")
-	v1, ok := d.GetOk("parameters")
-	if !ok || v1 == nil {
-		return fmt.Errorf("parameter to not be null")
-	}
-	if param, ok = v1.(map[string]interface{}); !ok {
-		return fmt.Errorf("expected type of parameter to not be map")
-	}
-	var filter map[string]*ValidatorParam
-	if protocol == "4.0" || protocol == "5.0" {
-		filter = GetValidatorParamForProto4()
-	} else {
-		filter = GetValidatorParamForProto()
-	}
-	for key, value := range param {
-		result := filter[key]
-		if result == nil {
-			return fmt.Errorf("expected %s to be in range %v", key, filter)
-		}
-		if result.Valid.Type == "enum" {
-			var ok bool
-			for _, val := range result.Valid.Values {
-				if val == value.(string) {
-					ok = true
-				}
-			}
-			if !ok {
-				return fmt.Errorf("expected value of %s to in %v", key, result.Valid.Values)
-			}
-		} else if result.Valid.Type == "range" {
-			v, ok := value.(string)
-			if !ok {
-				return fmt.Errorf("expected type of %v to be int", key)
-			}
-			val, _ := strconv.ParseInt(v, 10, 64)
-			if val < result.Valid.Min || val > result.Valid.Max {
-				return fmt.Errorf("expected value of %s to be in range [%v-%v]", key, result.Valid.Min, result.Valid.Max)
-			}
-		} else {
-			if ok := regexp.MustCompile(result.Valid.Value).MatchString(value.(string)); !ok {
-				return fmt.Errorf("expected value of %s to match regular expression %v", key, result.Valid.Value)
-			}
-		}
-	}
-	return nil
-}
-
-type Validity struct {
-	Type     string
-	DataType string
-	Value    string
-	Values   []string
-	Min      int64
-	Max      int64
-}
-
-type ValidatorParam struct {
-	Name  string
-	Desc  string
-	Valid *Validity
-}
-
-var filterForProto4 map[string]*ValidatorParam
-var onceFor4 sync.Once
-
-func GetValidatorParamForProto4() map[string]*ValidatorParam {
-	onceFor4.Do(func() {
-		filterForProto4 = make(map[string]*ValidatorParam)
-		filterForProto4["appendonly"] = &ValidatorParam{
-			Name: "appendonly",
-			Desc: "是否开启AOF持久化功能",
-			Valid: &Validity{
-				Type:     "enum",
-				DataType: "string",
-				Value:    "",
-				Values:   []string{"yes", "no"},
-				Min:      0,
-				Max:      0,
-			},
-		}
-		filterForProto4["appendfsync"] = &ValidatorParam{
-			Name: "appendfsync",
-			Desc: "AOF文件同步方式",
-			Valid: &Validity{
-				Type:     "enum",
-				DataType: "string",
-				Value:    "",
-				Values:   []string{"everysec", "always", "no"},
-				Min:      0,
-				Max:      0,
-			},
-		}
-		filterForProto4["maxmemory-policy"] = &ValidatorParam{
-			Name: "maxmemory-policy",
-			Desc: "Redis淘汰策略",
-			Valid: &Validity{
-				Type:     "enum",
-				DataType: "string",
-				Value:    "",
-				Values:   []string{"volatile-lru", "volatile-lfu", "volatile-random", "volatile-ttl", "allkeys-lru", "allkeys-lfu", "allkeys-random", "noeviction"},
-				Min:      0,
-				Max:      0,
-			},
-		}
-		filterForProto4["maxmemory-samples"] = &ValidatorParam{
-			Name: "maxmemory-samples",
-			Desc: "淘汰算法运行时的采样数",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      1,
-				Max:      10,
-			},
-		}
-		filterForProto4["hash-max-ziplist-entries"] = &ValidatorParam{
-			Name: "hash-max-ziplist-entries",
-			Desc: "内部数据结构优化的阈值",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      9007199254740990,
-			},
-		}
-		filterForProto4["hash-max-ziplist-value"] = &ValidatorParam{
-			Name: "hash-max-ziplist-value",
-			Desc: "内部数据结构优化的阈值",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      9007199254740990,
-			},
-		}
-		filterForProto4["list-max-ziplist-size"] = &ValidatorParam{
-			Name: "list-max-ziplist-size",
-			Desc: "内部数据结构优化的阈值",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      -2147483648,
-				Max:      2147483647,
-			},
-		}
-		filterForProto4["set-max-intset-entries"] = &ValidatorParam{
-			Name: "set-max-intset-entries",
-			Desc: "内部数据结构优化的阈值",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      9007199254740990,
-			},
-		}
-		filterForProto4["zset-max-ziplist-entries"] = &ValidatorParam{
-			Name: "zset-max-ziplist-entries",
-			Desc: "内部数据结构优化的阈值",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      9007199254740990,
-			},
-		}
-		filterForProto4["zset-max-ziplist-value"] = &ValidatorParam{
-			Name: "zset-max-ziplist-value",
-			Desc: "内部数据结构优化的阈值",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      9007199254740990,
-			},
-		}
-		filterForProto4["notify-keyspace-events"] = &ValidatorParam{
-			Name: "notify-keyspace-events",
-			Desc: "键空间通知配置",
-			Valid: &Validity{
-				Type:     "regexp",
-				DataType: "string",
-				Value:    "[KEg$lshzxeA]*",
-				Values:   nil,
-				Min:      0,
-				Max:      0,
-			},
-		}
-		filterForProto4["timeout"] = &ValidatorParam{
-			Name: "timeout",
-			Desc: "连接空闲超时时间",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      86400,
-			},
-		}
-	})
-
-	return filterForProto4
-}
-
-var filterForProto map[string]*ValidatorParam
-var once sync.Once
-
-func GetValidatorParamForProto() map[string]*ValidatorParam {
-	once.Do(func() {
-		filterForProto = make(map[string]*ValidatorParam)
-		filterForProto["appendonly"] = &ValidatorParam{
-			Name: "appendonly",
-			Desc: "是否开启AOF持久化功能",
-			Valid: &Validity{
-				Type:     "enum",
-				DataType: "string",
-				Value:    "",
-				Values:   []string{"yes", "no"},
-				Min:      0,
-				Max:      0,
-			},
-		}
-		filterForProto["appendfsync"] = &ValidatorParam{
-			Name: "appendfsync",
-			Desc: "AOF文件同步方式",
-			Valid: &Validity{
-				Type:     "enum",
-				DataType: "string",
-				Value:    "",
-				Values:   []string{"everysec", "always", "no"},
-				Min:      0,
-				Max:      0,
-			},
-		}
-		filterForProto["maxmemory-policy"] = &ValidatorParam{
-			Name: "maxmemory-policy",
-			Desc: "Redis淘汰策略",
-			Valid: &Validity{
-				Type:     "enum",
-				DataType: "string",
-				Value:    "",
-				Values:   []string{"volatile-lru", "volatile-lfu", "volatile-random", "volatile-ttl", "allkeys-lru", "allkeys-lfu", "allkeys-random", "noeviction"},
-				Min:      0,
-				Max:      0,
-			},
-		}
-		filterForProto["maxmemory-samples"] = &ValidatorParam{
-			Name: "maxmemory-samples",
-			Desc: "淘汰算法运行时的采样数",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      1,
-				Max:      10,
-			},
-		}
-		filterForProto["hash-max-ziplist-entries"] = &ValidatorParam{
-			Name: "hash-max-ziplist-entries",
-			Desc: "内部数据结构优化的阈值",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      9007199254740990,
-			},
-		}
-		filterForProto["hash-max-ziplist-value"] = &ValidatorParam{
-			Name: "hash-max-ziplist-value",
-			Desc: "内部数据结构优化的阈值",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      9007199254740990,
-			},
-		}
-		filterForProto["list-max-ziplist-entries"] = &ValidatorParam{
-			Name: "list-max-ziplist-entries",
-			Desc: "内部数据结构优化的阈值",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      9007199254740990,
-			},
-		}
-		filterForProto["list-max-ziplist-value"] = &ValidatorParam{
-			Name: "list-max-ziplist-value",
-			Desc: "内部数据结构优化的阈值",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      9007199254740990,
-			},
-		}
-
-		filterForProto["set-max-intset-entries"] = &ValidatorParam{
-			Name: "set-max-intset-entries",
-			Desc: "内部数据结构优化的阈值",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      9007199254740990,
-			},
-		}
-		filterForProto["zset-max-ziplist-entries"] = &ValidatorParam{
-			Name: "zset-max-ziplist-entries",
-			Desc: "内部数据结构优化的阈值",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      9007199254740990,
-			},
-		}
-		filterForProto["zset-max-ziplist-value"] = &ValidatorParam{
-			Name: "zset-max-ziplist-value",
-			Desc: "内部数据结构优化的阈值",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      9007199254740990,
-			},
-		}
-		filterForProto["notify-keyspace-events"] = &ValidatorParam{
-			Name: "notify-keyspace-events",
-			Desc: "键空间通知配置",
-			Valid: &Validity{
-				Type:     "regexp",
-				DataType: "string",
-				Value:    "[KEg$lshzxeA]*",
-				Values:   nil,
-				Min:      0,
-				Max:      0,
-			},
-		}
-		filterForProto["timeout"] = &ValidatorParam{
-			Name: "timeout",
-			Desc: "连接空闲超时时间",
-			Valid: &Validity{
-				Type:     "range",
-				DataType: "integer",
-				Value:    "",
-				Values:   nil,
-				Min:      0,
-				Max:      86400,
-			},
-		}
-	})
-
-	return filterForProto
 }
