@@ -142,18 +142,39 @@ func SetResourceDataByResp(d *schema.ResourceData, item interface{}, keys map[st
 	return nil
 }
 
-func AddProjectInfo(d *schema.ResourceData, req *map[string]interface{}, client *KsyunClient) error {
-	if pj, ok := d.GetOk("project_id"); ok {
-		(*req)["ProjectId.1"] = fmt.Sprintf("%v", pj)
-	} else if d.HasChange("project_id") && !d.IsNewResource() {
-		(*req)["ProjectId.1"] = fmt.Sprintf("%v", d.Get("project_id"))
+func AddProjectInfo(d *schema.ResourceData, req *map[string]interface{}, client *KsyunClient, key ...string) error {
+	var project string
+	if key != nil && len(key) == 1 {
+		project = key[0]
 	} else {
-		return GetProjectInfo(req, client)
+		project = "project_id"
+	}
+	hump := Downline2Hump(project)
+	if pj, ok := d.GetOk(project); ok {
+		(*req)[hump+".1"] = fmt.Sprintf("%v", pj)
+	} else if d.HasChange(project) && !d.IsNewResource() {
+		(*req)[hump+".1"] = fmt.Sprintf("%v", d.Get(project))
+	} else {
+		return GetProjectInfo(req, client, project)
 	}
 	return nil
 }
 
-func GetProjectInfo(input *map[string]interface{}, client *KsyunClient) error {
+func checkStringValueNotEmpty(d *schema.ResourceData, key string) (string, bool) {
+	if v, ok := d.GetOk(key); ok && v != nil && v.(string) != "" {
+		return v.(string), true
+	}
+	return "", false
+}
+
+func GetProjectInfo(input *map[string]interface{}, client *KsyunClient, key ...string) error {
+	var project string
+	if key != nil && len(key) == 1 {
+		project = key[0]
+	} else {
+		project = "project_id"
+	}
+	hump := Downline2Hump(project)
 	iamConn := client.iamconn
 	req := make(map[string]interface{})
 	resp, err := iamConn.GetAccountAllProjectList(&req)
@@ -168,7 +189,7 @@ func GetProjectInfo(input *map[string]interface{}, client *KsyunClient) error {
 		if l != nil {
 			if l1, ok := l.([]interface{}); ok {
 				for i, pj := range l1 {
-					index := fmt.Sprintf("ProjectId.%d", i+1)
+					index := fmt.Sprintf("%v.%d", hump, i+1)
 					(*input)[index] = pj.(map[string]interface{})["ProjectId"]
 				}
 			}

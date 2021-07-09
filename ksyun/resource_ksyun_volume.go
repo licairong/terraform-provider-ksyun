@@ -60,13 +60,6 @@ func resourceKsyunVolume() *schema.Resource {
 				Type:     schema.TypeString,
 				ForceNew: true,
 				Required: true,
-				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-					if old == "" && new != "" {
-						_ = d.Set("charge_type", new)
-						return true
-					}
-					return false
-				},
 			},
 			"availability_zone": {
 				Type:     schema.TypeString,

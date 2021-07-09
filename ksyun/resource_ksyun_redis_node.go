@@ -1,12 +1,14 @@
 package ksyun
 
 import (
+	"errors"
 	"fmt"
 	"github.com/KscSDK/ksc-sdk-go/service/kcsv1"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/terraform-providers/terraform-provider-ksyun/logger"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -15,10 +17,21 @@ func resourceRedisInstanceNode() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceRedisInstanceNodeCreate,
 		Delete: resourceRedisInstanceNodeDelete,
-		Update: resourceRedisInstanceNodeUpdate,
 		Read:   resourceRedisInstanceNodeRead,
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			State: func(d *schema.ResourceData, i interface{}) ([]*schema.ResourceData, error) {
+				var err error
+				importParts := strings.Split(d.Id(),":")
+				if len(importParts) < 2{
+					return nil, fmt.Errorf("import too few parts,must CacheId:NodeId")
+				}
+				d.SetId(importParts[1])
+				err = d.Set("cache_id",importParts[0])
+				if err !=nil {
+					return nil,err
+				}
+				return []*schema.ResourceData{d},err
+			},
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(3 * time.Hour),
@@ -28,14 +41,13 @@ func resourceRedisInstanceNode() *schema.Resource {
 			"available_zone": {
 				Type:     schema.TypeString,
 				Optional: true,
-			},
-			"pre_node_id": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Computed: true,
+				ForceNew: true,
 			},
 			"cache_id": {
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
 			},
 			"instance_id": {
 				Type:     schema.TypeString,
@@ -46,7 +58,7 @@ func resourceRedisInstanceNode() *schema.Resource {
 				Computed: true,
 			},
 			"port": {
-				Type:     schema.TypeString,
+				Type:     schema.TypeInt,
 				Computed: true,
 			},
 			"ip": {
@@ -73,140 +85,179 @@ func resourceRedisInstanceNodeCreate(d *schema.ResourceData, meta interface{}) e
 	var (
 		resp *map[string]interface{}
 		err  error
-		az   string
 	)
-
-	// create
-	conn := meta.(*KsyunClient).kcsv2conn
-	createNodeReq := make(map[string]interface{})
-	createNodeReq["CacheId"] = d.Get("cache_id")
-	if az, ok := d.GetOk("available_zone"); ok {
-		createNodeReq["AvailableZone"] = az
+	//read cluster
+	_,err = readRedisInstanceNodeCluster(d,meta)
+	if err != nil {
+		return fmt.Errorf("error on add Instance node: %s", err)
 	}
-	action := "AddCacheSlaveNode"
-	logger.Debug(logger.ReqFormat, action, createNodeReq)
-	if resp, err = conn.AddCacheSlaveNode(&createNodeReq); err != nil {
+	// create
+	resp, err = createRedisInstanceNode(d,meta)
+	if err != nil {
 		return fmt.Errorf("error on add instance node: %s", err)
 	}
 	if resp != nil {
 		_ = d.Set("instance_id", (*resp)["Data"].(map[string]interface{})["NodeId"].(string))
 	}
 	d.SetId(d.Get("instance_id").(string))
-	logger.Debug(logger.RespFormat, action, createNodeReq, *resp)
 
-	if createNodeReq["AvailableZone"] != nil {
-		az = createNodeReq["AvailableZone"].(string)
-	}
-	refreshConn := meta.(*KsyunClient).kcsv1conn
-	stateConf := &resource.StateChangeConf{
-		Pending:    []string{statusPending},
-		Target:     []string{"2"},
-		Refresh:    stateRefreshForOperateNodeFunc(refreshConn, az, d.Get("cache_id").(string), []string{"2"}),
-		Timeout:    d.Timeout(schema.TimeoutCreate),
-		Delay:      20 * time.Second,
-		MinTimeout: 1 * time.Minute,
-	}
-	_, err = stateConf.WaitForState()
-	_ = resourceRedisInstanceNodeRead(d, meta)
+	err = checkRedisInstanceStatus(d,meta, d.Timeout(schema.TimeoutCreate),d.Get("cache_id").(string))
 	if err != nil {
 		return fmt.Errorf("error on add Instance node: %s", err)
 	}
-	return nil
+
+	return resourceRedisInstanceNodeRead(d, meta)
 }
 
 func resourceRedisInstanceNodeDelete(d *schema.ResourceData, meta interface{}) error {
-	var (
-		resp *map[string]interface{}
-		err  error
-		az   string
-	)
-
 	// delete
-	conn := meta.(*KsyunClient).kcsv2conn
 	deleteParamReq := make(map[string]interface{})
 	deleteParamReq["CacheId"] = d.Get("cache_id")
 	deleteParamReq["NodeId"] = d.Get("instance_id")
-	if az, ok := d.GetOk("available_zone"); ok {
-		deleteParamReq["AvailableZone"] = az
-	}
-	action := "DeleteCacheSlaveNode"
-	logger.Debug(logger.ReqFormat, action, deleteParamReq)
-	if resp, err = conn.DeleteCacheSlaveNode(&deleteParamReq); err != nil {
-		return fmt.Errorf("error on delete instance node: %s", err)
-	}
-	logger.Debug(logger.RespFormat, action, deleteParamReq, *resp)
 
-	if deleteParamReq["AvailableZone"] != nil {
-		az = deleteParamReq["AvailableZone"].(string)
-	}
-	refreshConn := meta.(*KsyunClient).kcsv1conn
-	stateConf := &resource.StateChangeConf{
-		Pending:    []string{statusPending},
-		Target:     []string{"2"},
-		Refresh:    stateRefreshForOperateNodeFunc(refreshConn, az, d.Get("cache_id").(string), []string{"2"}),
-		Timeout:    d.Timeout(schema.TimeoutCreate),
-		Delay:      10 * time.Second,
-		MinTimeout: 1 * time.Minute,
-	}
-	_, err = stateConf.WaitForState()
+	return resource.Retry(20*time.Minute, func() *resource.RetryError {
+		var (
+			resp *map[string]interface{}
+			err error
+		)
+		integrationAzConf := &IntegrationRedisAzConf{
+			resourceData: d,
+			client:       meta.(*KsyunClient),
+			req:          &deleteParamReq,
+			field:        "available_zone",
+			requestFunc: func() (*map[string]interface{}, error) {
+				conn := meta.(*KsyunClient).kcsv2conn
+				return conn.DeleteCacheSlaveNode(&deleteParamReq)
+			},
+		}
+		action := "DeleteCacheSlaveNode"
+		logger.Debug(logger.ReqFormat, action, deleteParamReq)
+		resp, err = integrationAzConf.integrationRedisAz()
+		logger.Debug(logger.RespFormat, action, deleteParamReq, resp)
+		if err == nil {
+			return nil
+		}
+		_, err = readRedisInstanceNode(d, meta)
+		if err != nil {
+			if validateRedisNodeExists(err) {
+				return nil
+			}
+			return resource.NonRetryableError(err)
+		}
+		return resource.RetryableError(errors.New("deleting"))
+	})
 
-	if err != nil {
-		return fmt.Errorf("error on delete instance node: %s", err)
-	}
-	return nil
 }
 
-func resourceRedisInstanceNodeUpdate(d *schema.ResourceData, meta interface{}) error {
-	logger.Info("no support for instance readonly node update functions")
-	return nil
+func validateRedisNodeExists(err error) bool {
+	return strings.Contains(strings.ToLower(err.Error()), "not exist")
+}
+
+func readRedisInstanceNodeCluster(d *schema.ResourceData, meta interface{}) (*map[string]interface{},error) {
+	var (
+		resp *map[string]interface{}
+		err  error
+	)
+	readReq := make(map[string]interface{})
+	readReq["CacheId"] = d.Get("cache_id")
+
+	integrationAzConf := &IntegrationRedisAzConf{
+		resourceData: d,
+		client:       meta.(*KsyunClient),
+		req:          &readReq,
+		field:        "available_zone",
+		requestFunc: func() (*map[string]interface{}, error) {
+			conn := meta.(*KsyunClient).kcsv1conn
+			return conn.DescribeCacheCluster(&readReq)
+		},
+	}
+	resp, err = integrationAzConf.integrationRedisAz()
+	if err != nil {
+		return resp,fmt.Errorf("error on reading instance node Cluster %q, %s", d.Id(), err)
+	}
+	return resp,err
+}
+
+func createRedisInstanceNode(d *schema.ResourceData, meta interface{}) (*map[string]interface{},error){
+	var (
+		createNodeReq map[string]interface{}
+		resp *map[string]interface{}
+		err error
+	)
+	createNodeReq,err =  SdkRequestAutoMapping(d, resourceRedisInstanceNode(), false, nil, nil)
+	integrationAzConf := &IntegrationRedisAzConf{
+		resourceData: d,
+		client:       meta.(*KsyunClient),
+		req:          &createNodeReq,
+		field:        "available_zone",
+		requestFunc: func() (*map[string]interface{}, error) {
+			conn := meta.(*KsyunClient).kcsv2conn
+			return conn.AddCacheSlaveNode(&createNodeReq)
+		},
+	}
+	action := "AddCacheSlaveNode"
+	logger.Debug(logger.ReqFormat, action, createNodeReq)
+	resp ,err = integrationAzConf.integrationRedisAz()
+	return resp, err
+}
+
+func readRedisInstanceNode(d *schema.ResourceData, meta interface{}) (*map[string]interface{},error) {
+	var (
+		item interface{}
+		resp *map[string]interface{}
+		err  error
+		ok   bool
+	)
+	readReq := make(map[string]interface{})
+	readReq["CacheId"] = d.Get("cache_id")
+
+	integrationAzConf := &IntegrationRedisAzConf{
+		resourceData: d,
+		client:       meta.(*KsyunClient),
+		req:          &readReq,
+		field:        "available_zone",
+		requestFunc: func() (*map[string]interface{}, error) {
+			conn := meta.(*KsyunClient).kcsv2conn
+			return conn.DescribeCacheReadonlyNode(&readReq)
+		},
+	}
+	action := "DescribeCacheReadonlyNode"
+	logger.Debug(logger.ReqFormat, action, readReq)
+	resp, err = integrationAzConf.integrationRedisAz()
+	if err != nil {
+		return resp,fmt.Errorf("error on reading instance node %q, %s", d.Id(), err)
+	}
+	if item, ok = (*resp)["Data"]; !ok {
+		return resp,fmt.Errorf("error on reading instance node %s not exist", d.Id())
+	}
+	items, ok := item.([]interface{})
+	if !ok || len(items) == 0 {
+		return resp,fmt.Errorf("error on reading instance node %s not exist", d.Id())
+	}
+	for _, v := range items {
+		vMap := v.(map[string]interface{})
+		if d.Id() == vMap["instanceId"] {
+			return &vMap ,err
+		}
+	}
+	return resp,fmt.Errorf("error on reading instance node %s not exist", d.Id())
 }
 
 func resourceRedisInstanceNodeRead(d *schema.ResourceData, meta interface{}) error {
 	var (
-		item interface{}
 		resp *map[string]interface{}
-		ok   bool
 		err  error
 	)
+	_,err = readRedisInstanceNodeCluster(d,meta)
+	if err != nil {
+		return err
+	}
 
-	conn := meta.(*KsyunClient).kcsv2conn
-	readReq := make(map[string]interface{})
-	readReq["CacheId"] = d.Get("cache_id")
-	if az, ok := d.GetOk("available_zone"); ok {
-		readReq["AvailableZone"] = az
+	resp,err = readRedisInstanceNode(d,meta)
+	if err != nil {
+		return err
 	}
-	action := "DescribeCacheReadonlyNode"
-	logger.Debug(logger.ReqFormat, action, readReq)
-	if resp, err = conn.DescribeCacheReadonlyNode(&readReq); err != nil {
-		return fmt.Errorf("error on reading instance node %q, %s", d.Id(), err)
-	}
-	logger.Debug(logger.RespFormat, action, readReq, *resp)
-	if item, ok = (*resp)["Data"]; !ok {
-		return nil
-	}
-	items, ok := item.([]interface{})
-	if !ok || len(items) == 0 {
-		return nil
-	}
-	result := make(map[string]interface{})
-	nodeId := d.Get("instance_id").(string)
-	for _, v := range items {
-		vMap := v.(map[string]interface{})
-		if nodeId == vMap["instanceId"] {
-			result["instance_id"] = vMap["instanceId"]
-			result["name"] = vMap["name"]
-			result["port"] = fmt.Sprintf("%v", vMap["port"])
-			result["ip"] = vMap["ip"]
-			result["status"] = vMap["status"]
-			result["create_time"] = vMap["createTime"]
-			result["proxy"] = vMap["proxy"]
-		}
-	}
-	for k, v := range result {
-		if err := d.Set(k, v); err != nil {
-			return fmt.Errorf("error set data %v :%v", v, err)
-		}
-	}
+	SdkResponseAutoResourceData(d, resourceRedisInstanceNode(), *resp, nil)
 	return nil
 }
 
