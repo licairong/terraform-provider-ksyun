@@ -239,6 +239,15 @@ func transformWithN(v interface{}, k string, t SdkReqTransform, req *map[string]
 			}
 		}
 	}
+	if x,ok := v.([]interface{});ok{
+		for i, value := range x {
+			if strings.TrimSpace(t.mapping) == "" {
+				(*req)[Downline2Hump(k)+"."+strconv.Itoa(i+1)] = value
+			} else {
+				(*req)[t.mapping+"."+strconv.Itoa(i+1)] = value
+			}
+		}
+	}
 
 	return nil
 }
@@ -569,7 +578,11 @@ func SdkResponseAutoResourceData(d *schema.ResourceData, resource *schema.Resour
 							value = SdkResponseAutoResourceData(d, elem, v, extra, false)
 						}
 					} else if _, ok := r.Elem.(*schema.Schema); ok {
-						value = v
+						if m.FieldRespFunc != nil {
+							value = m.FieldRespFunc(v)
+						}else{
+							value = v
+						}
 					}
 				} else {
 					if m.FieldRespFunc != nil {
