@@ -289,7 +289,7 @@ func resourceRedisInstanceCreate(d *schema.ResourceData, meta interface{}) error
 	if resp != nil {
 		d.SetId((*resp)["Data"].(map[string]interface{})["CacheId"].(string))
 	}
-	err = checkRedisInstanceStatus(d, meta, d.Timeout(schema.TimeoutCreate))
+	err = checkRedisInstanceStatus(d, meta, d.Timeout(schema.TimeoutCreate),"")
 	if err != nil {
 		return fmt.Errorf("error on create Instance: %s", err)
 	}
@@ -311,7 +311,7 @@ func setResourceRedisInstanceParameter(d *schema.ResourceData, meta interface{},
 	(*createReq)["CacheId"] = d.Id()
 	(*createReq)["Protocol"] = d.Get("protocol")
 
-	integrationAzConf := &IntegrationAzConf{
+	integrationAzConf := &IntegrationRedisAzConf{
 		resourceData: d,
 		client:       meta.(*KsyunClient),
 		req:          createReq,
@@ -324,12 +324,12 @@ func setResourceRedisInstanceParameter(d *schema.ResourceData, meta interface{},
 
 	action := "SetCacheParameters"
 	logger.Debug(logger.ReqFormat, action, *createReq)
-	resp, err = integrationAzConf.integrationAz()
+	resp, err = integrationAzConf.integrationRedisAz()
 	if err != nil {
 		return fmt.Errorf("error on set instance parameter: %s", err)
 	}
 	logger.Debug(logger.RespFormat, action, *createReq, *resp)
-	err = checkRedisInstanceStatus(d, meta, d.Timeout(schema.TimeoutUpdate))
+	err = checkRedisInstanceStatus(d, meta, d.Timeout(schema.TimeoutUpdate),"")
 	if err != nil {
 		return fmt.Errorf("error on create Instance: %s", err)
 	}
@@ -406,7 +406,7 @@ func resourceRedisInstanceParameterCheckAndPrepare(d *schema.ResourceData, meta 
 	if d.Id() != "" {
 		reqParam := make(map[string]interface{})
 		reqParam["CacheId"] = d.Id()
-		integrationAzConf := &IntegrationAzConf{
+		integrationAzConf := &IntegrationRedisAzConf{
 			resourceData: d,
 			client:       meta.(*KsyunClient),
 			req:          &reqParam,
@@ -416,7 +416,7 @@ func resourceRedisInstanceParameterCheckAndPrepare(d *schema.ResourceData, meta 
 				return conn.DescribeCacheParameters(&reqParam)
 			},
 		}
-		resp, err = integrationAzConf.integrationAz()
+		resp, err = integrationAzConf.integrationRedisAz()
 		if err != nil {
 			return &req, fmt.Errorf("error on DescribeCacheParameters: %s", err)
 		}
@@ -505,37 +505,32 @@ func resourceRedisInstanceParameterCheckAndPrepare(d *schema.ResourceData, meta 
 }
 
 func resourceRedisInstanceDelete(d *schema.ResourceData, meta interface{}) error {
-	var (
-		resp *map[string]interface{}
-		err  error
-	)
-
 	deleteReq := make(map[string]interface{})
 	deleteReq["CacheId"] = d.Id()
 
-	integrationAzConf := &IntegrationAzConf{
-		resourceData: d,
-		client:       meta.(*KsyunClient),
-		req:          &deleteReq,
-		field:        "available_zone",
-		requestFunc: func() (*map[string]interface{}, error) {
-			conn := meta.(*KsyunClient).kcsv1conn
-			return conn.DeleteCacheCluster(&deleteReq)
-		},
-	}
-
-	action := "DeleteCacheCluster"
-	logger.Debug(logger.ReqFormat, action, deleteReq)
-	resp, err = integrationAzConf.integrationAz()
-	if err != nil {
-		return fmt.Errorf("error on deleting instance %q, %s", d.Id(), err)
-	}
-	logger.Debug(logger.RespFormat, action, deleteReq, *resp)
 	return resource.Retry(20*time.Minute, func() *resource.RetryError {
 		var (
+			resp *map[string]interface{}
 			err error
 		)
-		_, err = describeRedisInstance(d, meta)
+		integrationAzConf := &IntegrationRedisAzConf{
+			resourceData: d,
+			client:       meta.(*KsyunClient),
+			req:          &deleteReq,
+			field:        "available_zone",
+			requestFunc: func() (*map[string]interface{}, error) {
+				conn := meta.(*KsyunClient).kcsv1conn
+				return conn.DeleteCacheCluster(&deleteReq)
+			},
+		}
+		action := "DeleteCacheCluster"
+		logger.Debug(logger.ReqFormat, action, deleteReq)
+		resp, err = integrationAzConf.integrationRedisAz()
+		if err == nil {
+			return nil
+		}
+		logger.Debug(logger.RespFormat, action, deleteReq, resp)
+		_, err = describeRedisInstance(d, meta,"")
 		if err != nil {
 			if validateExists(err) {
 				return nil
@@ -573,7 +568,7 @@ func modifyRedisInstanceNameAndProject(d *schema.ResourceData, meta interface{})
 
 	if len(req) > 0 {
 		req["CacheId"] = d.Id()
-		integrationAzConf := &IntegrationAzConf{
+		integrationAzConf := &IntegrationRedisAzConf{
 			resourceData: d,
 			client:       meta.(*KsyunClient),
 			req:          &req,
@@ -585,7 +580,7 @@ func modifyRedisInstanceNameAndProject(d *schema.ResourceData, meta interface{})
 		}
 		action := "RenameCacheCluster"
 		logger.Debug(logger.ReqFormat, action, req)
-		resp, err = integrationAzConf.integrationAz()
+		resp, err = integrationAzConf.integrationRedisAz()
 		if err != nil {
 			return fmt.Errorf("error on rename instance %q, %s", d.Id(), err)
 		}
@@ -611,7 +606,7 @@ func modifyRedisInstancePassword(d *schema.ResourceData, meta interface{}) error
 
 	if len(req) > 0 {
 		req["CacheId"] = d.Id()
-		integrationAzConf := &IntegrationAzConf{
+		integrationAzConf := &IntegrationRedisAzConf{
 			resourceData: d,
 			client:       meta.(*KsyunClient),
 			req:          &req,
@@ -623,7 +618,7 @@ func modifyRedisInstancePassword(d *schema.ResourceData, meta interface{}) error
 		}
 		action := "UpdatePassword"
 		logger.Debug(logger.ReqFormat, action, req)
-		resp, err = integrationAzConf.integrationAz()
+		resp, err = integrationAzConf.integrationRedisAz()
 		if err != nil {
 			return fmt.Errorf("error on UpdatePassword instance %q, %s", d.Id(), err)
 		}
@@ -649,7 +644,7 @@ func modifyRedisInstanceSpec(d *schema.ResourceData, meta interface{}) error {
 
 	if len(req) > 0 {
 		req["CacheId"] = d.Id()
-		integrationAzConf := &IntegrationAzConf{
+		integrationAzConf := &IntegrationRedisAzConf{
 			resourceData: d,
 			client:       meta.(*KsyunClient),
 			req:          &req,
@@ -661,12 +656,12 @@ func modifyRedisInstanceSpec(d *schema.ResourceData, meta interface{}) error {
 		}
 		action := "ResizeCacheCluster"
 		logger.Debug(logger.ReqFormat, action, req)
-		resp, err = integrationAzConf.integrationAz()
+		resp, err = integrationAzConf.integrationRedisAz()
 		if err != nil {
 			return fmt.Errorf("error on ResizeCacheCluster instance %q, %s", d.Id(), err)
 		}
 		logger.Debug(logger.RespFormat, action, req, *resp)
-		err = checkRedisInstanceStatus(d, meta, d.Timeout(schema.TimeoutUpdate))
+		err = checkRedisInstanceStatus(d, meta, d.Timeout(schema.TimeoutUpdate),"")
 		if err != nil {
 			return fmt.Errorf("error on ResizeCacheCluster instance %q, %s", d.Id(), err)
 		}
@@ -693,7 +688,7 @@ func modifyRedisInstanceSg(d *schema.ResourceData, meta interface{}) error {
 		oldSg, newSg := d.GetChange("security_group_id")
 		req["CacheId.1"] = d.Id()
 		req["SecurityGroupId"] = oldSg
-		integrationAzConf := &IntegrationAzConf{
+		integrationAzConf := &IntegrationRedisAzConf{
 			resourceData: d,
 			client:       meta.(*KsyunClient),
 			req:          &req,
@@ -705,14 +700,14 @@ func modifyRedisInstanceSg(d *schema.ResourceData, meta interface{}) error {
 		}
 		action := "DeallocateSecurityGroup"
 		logger.Debug(logger.ReqFormat, action, req)
-		resp, err = integrationAzConf.integrationAz()
+		resp, err = integrationAzConf.integrationRedisAz()
 		if err != nil {
 			return fmt.Errorf("error on DeallocateSecurityGroup instance %q, %s", d.Id(), err)
 		}
 		logger.Debug(logger.RespFormat, action, req, *resp)
 
 		req["SecurityGroupId"] = newSg
-		integrationAzConf = &IntegrationAzConf{
+		integrationAzConf = &IntegrationRedisAzConf{
 			resourceData: d,
 			client:       meta.(*KsyunClient),
 			req:          &req,
@@ -724,7 +719,7 @@ func modifyRedisInstanceSg(d *schema.ResourceData, meta interface{}) error {
 		}
 		action = "AllocateSecurityGroup"
 		logger.Debug(logger.ReqFormat, action, req)
-		resp, err = integrationAzConf.integrationAz()
+		resp, err = integrationAzConf.integrationRedisAz()
 		if err != nil {
 			return fmt.Errorf("error on AllocateSecurityGroup instance %q, %s", d.Id(), err)
 		}
@@ -783,15 +778,18 @@ func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) (err 
 	return err
 }
 
-func describeRedisInstance(d *schema.ResourceData, meta interface{}) (*map[string]interface{}, error) {
+func describeRedisInstance(d *schema.ResourceData, meta interface{},id string) (*map[string]interface{}, error) {
 	var (
 		resp *map[string]interface{}
 		err  error
 	)
 	queryReq := make(map[string]interface{})
-	queryReq["CacheId"] = d.Id()
+	if id == ""{
+		id = d.Id()
+	}
+	queryReq["CacheId"] = id
 
-	integrationAzConf := &IntegrationAzConf{
+	integrationAzConf := &IntegrationRedisAzConf{
 		resourceData: d,
 		client:       meta.(*KsyunClient),
 		req:          &queryReq,
@@ -803,7 +801,7 @@ func describeRedisInstance(d *schema.ResourceData, meta interface{}) (*map[strin
 	}
 	action := "DescribeCacheCluster"
 	logger.Debug(logger.ReqFormat, action, queryReq)
-	resp, err = integrationAzConf.integrationAz()
+	resp, err = integrationAzConf.integrationRedisAz()
 	if err != nil {
 		return resp, err
 	}
@@ -818,7 +816,7 @@ func resourceRedisInstanceRead(d *schema.ResourceData, meta interface{}) error {
 		ok   bool
 		err  error
 	)
-	resp, err = describeRedisInstance(d, meta)
+	resp, err = describeRedisInstance(d, meta,"")
 	if err != nil {
 		return fmt.Errorf("error on reading instance %q, %s", d.Id(), err)
 	}
@@ -872,7 +870,7 @@ func resourceRedisInstanceSgRead(d *schema.ResourceData, meta interface{}) error
 	querySg := make(map[string]interface{})
 	querySg["CacheId"] = d.Id()
 
-	integrationAzConf := &IntegrationAzConf{
+	integrationAzConf := &IntegrationRedisAzConf{
 		resourceData: d,
 		client:       meta.(*KsyunClient),
 		req:          &querySg,
@@ -883,7 +881,7 @@ func resourceRedisInstanceSgRead(d *schema.ResourceData, meta interface{}) error
 		},
 	}
 
-	resp, err = integrationAzConf.integrationAz()
+	resp, err = integrationAzConf.integrationRedisAz()
 	if err != nil {
 		return err
 	}
@@ -915,7 +913,7 @@ func resourceRedisInstanceParamRead(d *schema.ResourceData, meta interface{}) er
 	readReq := make(map[string]interface{})
 	readReq["CacheId"] = d.Id()
 
-	integrationAzConf := &IntegrationAzConf{
+	integrationAzConf := &IntegrationRedisAzConf{
 		resourceData: d,
 		client:       meta.(*KsyunClient),
 		req:          &readReq,
@@ -928,7 +926,7 @@ func resourceRedisInstanceParamRead(d *schema.ResourceData, meta interface{}) er
 
 	action := "DescribeCacheParameters"
 	logger.Debug(logger.ReqFormat, action, readReq)
-	resp, err = integrationAzConf.integrationAz()
+	resp, err = integrationAzConf.integrationRedisAz()
 	if err != nil {
 		return fmt.Errorf("error on reading instance parameter %q, %s", d.Id(), err)
 	}
@@ -957,12 +955,15 @@ func resourceRedisInstanceParamRead(d *schema.ResourceData, meta interface{}) er
 	return nil
 }
 
-func checkRedisInstanceStatus(d *schema.ResourceData, meta interface{}, timeout time.Duration) error {
+func checkRedisInstanceStatus(d *schema.ResourceData, meta interface{}, timeout time.Duration,id string) error {
 	var err error
+	if id == ""{
+		id = d.Id()
+	}
 	stateConf := &resource.StateChangeConf{
 		Pending:    []string{statusPending},
 		Target:     []string{"2"},
-		Refresh:    stateRefreshForRedis(d, meta, []string{"2"}),
+		Refresh:    stateRefreshForRedis(d, meta, []string{"2"},id),
 		Timeout:    timeout,
 		Delay:      20 * time.Second,
 		MinTimeout: 1 * time.Minute,
@@ -971,7 +972,7 @@ func checkRedisInstanceStatus(d *schema.ResourceData, meta interface{}, timeout 
 	return err
 }
 
-func stateRefreshForRedis(d *schema.ResourceData, meta interface{}, target []string) resource.StateRefreshFunc {
+func stateRefreshForRedis(d *schema.ResourceData, meta interface{}, target []string,id string) resource.StateRefreshFunc {
 	return func() (interface{}, string, error) {
 		var (
 			resp *map[string]interface{}
@@ -980,7 +981,7 @@ func stateRefreshForRedis(d *schema.ResourceData, meta interface{}, target []str
 			err  error
 		)
 
-		resp, err = describeRedisInstance(d, meta)
+		resp, err = describeRedisInstance(d, meta,id)
 		if err != nil {
 			return nil, "", err
 		}
