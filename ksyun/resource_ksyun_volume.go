@@ -3,6 +3,7 @@ package ksyun
 import (
 	"errors"
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"time"
 
 	"github.com/KscSDK/ksc-sdk-go/service/ebs"
@@ -33,6 +34,7 @@ func resourceKsyunVolume() *schema.Resource {
 			"volume_type": {
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
 			},
 			"volume_desc": {
 				Type:     schema.TypeString,
@@ -46,24 +48,22 @@ func resourceKsyunVolume() *schema.Resource {
 			"online_resize": {
 				Type:     schema.TypeBool,
 				Optional: true,
-				Default:  false,
-				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-					if !d.HasChange("size") {
-						_ = d.Set("online_resize", new)
-						return true
-					}
-					return false
-				},
+				Default:  true,
 			},
 
 			"charge_type": {
 				Type:     schema.TypeString,
 				ForceNew: true,
 				Required: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"HourlyInstantSettlement",
+					"Daily",
+				}, false),
 			},
 			"availability_zone": {
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
 			},
 			"project_id": {
 				Type:     schema.TypeInt,
@@ -74,10 +74,6 @@ func resourceKsyunVolume() *schema.Resource {
 				Computed: true,
 			},
 			"create_time": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-			"volume_id": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
@@ -94,27 +90,20 @@ func resourceKsyunVolume() *schema.Resource {
 }
 
 func resourceKsyunVolumeCreate(d *schema.ResourceData, meta interface{}) error {
+	var (
+		resp *map[string]interface{}
+		err  error
+	)
 	conn := meta.(*KsyunClient).ebsconn
-	var resp *map[string]interface{}
-	createReq := make(map[string]interface{})
-	creates := []string{
-		"volume_name",
-		"volume_type",
-		"volume_desc",
-		"size",
-		"charge_type",
-		"availability_zone",
-		"project_id",
+	transform := map[string]SdkReqTransform{
+		"online_resize": {Ignore: true},
 	}
-	for _, v := range creates {
-		if v1, ok := d.GetOk(v); ok {
-			vv := Downline2Hump(v)
-			createReq[vv] = fmt.Sprintf("%v", v1)
-		}
-	}
+	createReq, err := SdkRequestAutoMapping(d, resourceKsyunVolume(), false, transform, nil, SdkReqParameter{
+		false,
+	})
 	action := "CreateVolume"
 	logger.Debug(logger.ReqFormat, action, createReq)
-	resp, err := conn.CreateVolume(&createReq)
+	resp, err = conn.CreateVolume(&createReq)
 	if err != nil {
 		return fmt.Errorf("error on creating volume: %s", err)
 	}
@@ -128,20 +117,29 @@ func resourceKsyunVolumeCreate(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("error on creating volume : no id found")
 	}
 	d.SetId(idRes)
+	err = checkKsyunVolumeStatus(d, meta, d.Timeout(schema.TimeoutCreate))
+	if err != nil {
+		return fmt.Errorf("error on waiting for volume %q complete creating, %s", d.Id(), err)
+	}
+	err = resourceKsyunVolumeRead(d, meta)
+	return err
+}
+
+func checkKsyunVolumeStatus(d *schema.ResourceData, meta interface{}, timeOut time.Duration) error {
+	var (
+		err error
+	)
+	conn := meta.(*KsyunClient).ebsconn
 	stateConf := &resource.StateChangeConf{
 		Pending:    []string{statusPending},
-		Target:     []string{"available"},
-		Refresh:    resourceKsyunVolumeStatusRefresh(conn, d.Id(), []string{"available"}),
-		Timeout:    d.Timeout(schema.TimeoutCreate),
+		Target:     []string{"available", "in-use"},
+		Refresh:    resourceKsyunVolumeStatusRefresh(conn, d.Id(), []string{"available", "in-use"}),
+		Timeout:    timeOut,
 		Delay:      3 * time.Second,
 		MinTimeout: 2 * time.Second,
 	}
 	_, err = stateConf.WaitForState()
-	_ = resourceKsyunVolumeRead(d, meta)
-	if err != nil {
-		return fmt.Errorf("error on waiting for volume %q complete creating, %s", d.Id(), err)
-	}
-	return nil
+	return err
 }
 
 func resourceKsyunVolumeStatusRefresh(conn *ebs.Ebs, volumeId string, target []string) resource.StateRefreshFunc {
@@ -190,105 +188,125 @@ func resourceKsyunVolumeStatusRefresh(conn *ebs.Ebs, volumeId string, target []s
 }
 
 func resourceKsyunVolumeRead(d *schema.ResourceData, meta interface{}) error {
+	var (
+		resp *map[string]interface{}
+		err  error
+	)
 	conn := meta.(*KsyunClient).ebsconn
 	readReq := make(map[string]interface{})
 	readReq["VolumeId.1"] = d.Id()
 	action := "DescribeVolumes"
 	logger.Debug(logger.ReqFormat, action, readReq)
-	resp, err := conn.DescribeVolumes(&readReq)
+	resp, err = conn.DescribeVolumes(&readReq)
 	if err != nil {
 		return fmt.Errorf("error on reading volume %q, %s", d.Id(), err)
 	}
 	logger.Debug(logger.RespFormat, action, readReq, *resp)
 	volumeList, ok := (*resp)["Volumes"]
 	if !ok {
-		d.SetId("")
-		return nil
+		return fmt.Errorf("error on reading volume %q, %s", d.Id(), err)
 	}
 	volumes, ok1 := volumeList.([]interface{})
 	if !ok1 {
-		d.SetId("")
-		return nil
+		return fmt.Errorf("error on reading volume %q, %s", d.Id(), err)
 	}
-	if volumes == nil || len(volumes) < 1 {
-		d.SetId("")
-		return nil
+	if volumes == nil || len(volumes) != 1 {
+		return fmt.Errorf("error on reading volume %q, %s", d.Id(), err)
 	}
-	SetDByResp(d, volumes[0], volumeKeys, map[string]bool{})
-	//online
-	return d.Set("online_resize", d.Get("online_resize"))
+	SdkResponseAutoResourceData(d, resourceKsyunVolume(), volumes[0], nil)
+	if _, ok = d.GetOk("online_resize"); !ok {
+		if volumes[0].(map[string]interface{})["VolumeStatus"].(string) == "available" {
+			err = d.Set("online_resize", false)
+		} else {
+			err = d.Set("online_resize", true)
+		}
+	}
+	return err
 }
 
-func resourceKsyunVolumeUpdate(d *schema.ResourceData, meta interface{}) error {
-	d.Partial(true)
+func modifyKsyunVolumeInfo(d *schema.ResourceData, meta interface{}) error {
+	var (
+		resp *map[string]interface{}
+		err  error
+	)
 	conn := meta.(*KsyunClient).ebsconn
-	if d.HasChange("volume_name") && !d.IsNewResource() {
-		d.SetPartial("volume_name")
-		update := make(map[string]interface{})
-		update["VolumeId"] = d.Id()
-		if v, ok := d.GetOk("volume_name"); ok {
-			update["VolumeName"] = v.(string)
-		} else {
-			return fmt.Errorf("cann't change volume_name to empty string")
+	transform := map[string]SdkReqTransform{
+		"volume_name": {},
+		"volume_desc": {},
+	}
+	req, err := SdkRequestAutoMapping(d, resourceKsyunVolume(), true, transform, nil)
+	if err != nil {
+		return fmt.Errorf("error on update volume info %q, %s", d.Id(), err)
+	}
+	if len(req) > 0 {
+		err = checkKsyunVolumeStatus(d, meta, d.Timeout(schema.TimeoutUpdate))
+		if err != nil {
+			return err
 		}
+		req["VolumeId"] = d.Id()
 		action := "ModifyVolume"
-		logger.Debug(logger.ReqFormat, action, update)
-		resp, err := conn.ModifyVolume(&update)
+		logger.Debug(logger.ReqFormat, action, req)
+		resp, err = conn.ModifyVolume(&req)
 		if err != nil {
 			return fmt.Errorf("error on update volume name %q, %s", d.Id(), err)
 		}
-		logger.Debug(logger.RespFormat, action, update, *resp)
+		logger.Debug(logger.RespFormat, action, req, *resp)
 	}
-	if d.HasChange("volume_desc") && !d.IsNewResource() {
-		d.SetPartial("volume_desc")
-		update := make(map[string]interface{})
-		update["VolumeId"] = d.Id()
-		if v, ok := d.GetOk("volume_desc"); ok {
-			update["VolumeDesc"] = v.(string)
-		} else {
-			return fmt.Errorf("cann't change volume_desc to empty string")
-		}
-		action := "ModifyVolume"
-		logger.Debug(logger.ReqFormat, action, update)
-		resp, err := conn.ModifyVolume(&update)
+	return err
+}
+
+func modifyKsyunVolumeSize(d *schema.ResourceData, meta interface{}) error {
+	var (
+		resp *map[string]interface{}
+		err  error
+	)
+	conn := meta.(*KsyunClient).ebsconn
+	transform := map[string]SdkReqTransform{
+		"size": {},
+	}
+	req, err := SdkRequestAutoMapping(d, resourceKsyunVolume(), true, transform, nil)
+	if err != nil {
+		return fmt.Errorf("error on update volume size %q, %s", d.Id(), err)
+	}
+	if len(req) > 0 {
+		err = checkKsyunVolumeStatus(d, meta, d.Timeout(schema.TimeoutUpdate))
 		if err != nil {
-			return fmt.Errorf("error on update volume desc %q, %s", d.Id(), err)
+			return err
 		}
-		logger.Debug(logger.RespFormat, action, update, *resp)
-	}
-	if d.HasChange("size") && !d.IsNewResource() {
-		d.SetPartial("size")
-		update := make(map[string]interface{})
-		update["VolumeId"] = d.Id()
-		update["OnlineResize"] = d.Get("online_resize")
-		if v, ok := d.GetOk("size"); ok {
-			update["Size"] = fmt.Sprintf("%v", v.(int))
-		} else {
-			return fmt.Errorf("cann't change size to empty")
+		if status, ok := d.GetOk("volume_status"); ok && status.(string) == "available" && d.Get("online_resize").(bool) {
+			return fmt.Errorf("error on resize volume %q, status is available not support online_resize", d.Id())
 		}
+		o, n := d.GetChange("size")
+		if o.(int) > n.(int) {
+			return fmt.Errorf("error on resize volume %q, resize not support decrease", d.Id())
+		}
+
+		req["OnlineResize"] = d.Get("online_resize")
+		req["VolumeId"] = d.Id()
 		action := "ResizeVolume"
-		logger.Debug(logger.ReqFormat, action, update)
-		resp, err := conn.ResizeVolume(&update)
+		logger.Debug(logger.ReqFormat, action, req)
+		resp, err = conn.ResizeVolume(&req)
 		if err != nil {
 			return fmt.Errorf("error on resize volume %q, %s", d.Id(), err)
 		}
-		logger.Debug(logger.RespFormat, action, update, *resp)
-		stateConf := &resource.StateChangeConf{
-			Pending:    []string{statusPending},
-			Target:     []string{"available", "in-use"},
-			Refresh:    resourceKsyunVolumeStatusRefresh(conn, d.Id(), []string{"available", "in-use"}),
-			Timeout:    d.Timeout(schema.TimeoutUpdate),
-			Delay:      3 * time.Second,
-			MinTimeout: 2 * time.Second,
-		}
-		_, err = stateConf.WaitForState()
-		_ = resourceKsyunVolumeRead(d, meta)
-		if err != nil {
-			return fmt.Errorf("error on waiting for volume %q complete resize, %s", d.Id(), err)
-		}
+		logger.Debug(logger.RespFormat, action, req, *resp)
+		err = checkKsyunVolumeStatus(d, meta, d.Timeout(schema.TimeoutUpdate))
 	}
-	d.Partial(false)
-	return resourceKsyunVolumeRead(d, meta)
+	return err
+}
+
+func resourceKsyunVolumeUpdate(d *schema.ResourceData, meta interface{}) error {
+	var err error
+	err = modifyKsyunVolumeInfo(d, meta)
+	if err != nil {
+		return err
+	}
+	err = modifyKsyunVolumeSize(d, meta)
+	if err != nil {
+		return err
+	}
+	err = resourceKsyunVolumeRead(d, meta)
+	return err
 }
 
 func resourceKsyunVolumeDelete(d *schema.ResourceData, meta interface{}) error {

@@ -18,12 +18,12 @@ func resourceRedisSecurityGroupAllocate() *schema.Resource {
 		Importer: &schema.ResourceImporter{
 			State: func(d *schema.ResourceData, i interface{}) ([]*schema.ResourceData, error) {
 				var err error
-				err = d.Set("security_group_id",d.Id())
-				if err !=nil {
-					return  nil,err
+				err = d.Set("security_group_id", d.Id())
+				if err != nil {
+					return nil, err
 				}
-				d.SetId(d.Id()+"-allocate")
-				return []*schema.ResourceData{d},err
+				d.SetId(d.Id() + "-allocate")
+				return []*schema.ResourceData{d}, err
 			},
 		},
 		Schema: map[string]*schema.Schema{
@@ -52,7 +52,7 @@ func resourceRedisSecurityGroupAllocate() *schema.Resource {
 
 func resourceRedisSecurityGroupAllocateCreate(d *schema.ResourceData, meta interface{}) error {
 	var (
-		err  error
+		err error
 	)
 
 	transform := map[string]SdkReqTransform{
@@ -61,25 +61,25 @@ func resourceRedisSecurityGroupAllocateCreate(d *schema.ResourceData, meta inter
 			Type:    TransformWithN,
 		},
 	}
-	err = processRedisSecurityGroupRuleAllocate(d,meta,transform,false,d.Get("security_group_id").(string))
+	err = processRedisSecurityGroupRuleAllocate(d, meta, transform, false, d.Get("security_group_id").(string))
 	if err != nil {
 		return fmt.Errorf("error on allocate redis security group: %s", err)
 	}
 
-	d.SetId(d.Get("security_group_id").(string)+"-allocate")
+	d.SetId(d.Get("security_group_id").(string) + "-allocate")
 
-	return resourceRedisSecurityGroupAllocateRead(d,meta)
+	return resourceRedisSecurityGroupAllocateRead(d, meta)
 }
 
 func resourceRedisSecurityGroupAllocateUpdate(d *schema.ResourceData, meta interface{}) error {
 	//cache_ids
 	if d.HasChange("cache_ids") {
 		var (
-			err       error
+			err      error
 			oldArray []string
 			newArray []string
-			add []interface{}
-			del []interface{}
+			add      []interface{}
+			del      []interface{}
 		)
 		_, err = readRedisSecurityGroup(d, meta, d.Get("security_group_id").(string))
 		if err != nil {
@@ -122,14 +122,14 @@ func resourceRedisSecurityGroupAllocateUpdate(d *schema.ResourceData, meta inter
 				mapping: "CacheId",
 				Type:    TransformWithN,
 				ValueFunc: func(data *schema.ResourceData) (interface{}, bool) {
-					if len(add) > 0{
-						return add,true
+					if len(add) > 0 {
+						return add, true
 					}
-					return nil,true
+					return nil, true
 				},
 			},
 		}
-		err = processRedisSecurityGroupRuleAllocate(d, meta, transformAdd, false,d.Get("security_group_id").(string))
+		err = processRedisSecurityGroupRuleAllocate(d, meta, transformAdd, false, d.Get("security_group_id").(string))
 		if err != nil {
 			return err
 		}
@@ -138,29 +138,35 @@ func resourceRedisSecurityGroupAllocateUpdate(d *schema.ResourceData, meta inter
 				mapping: "CacheId",
 				Type:    TransformWithN,
 				ValueFunc: func(data *schema.ResourceData) (interface{}, bool) {
-					if len(del) > 0{
-						return del,true
+					if len(del) > 0 {
+						return del, true
 					}
-					return nil,true
+					return nil, true
 				},
 			},
 		}
-		err = processRedisSecurityGroupRuleAllocate(d, meta, transformDel, true,d.Get("security_group_id").(string))
+		err = processRedisSecurityGroupRuleAllocate(d, meta, transformDel, true, d.Get("security_group_id").(string))
 		if err != nil {
 			return err
 		}
 
 	}
 
-	return resourceRedisSecurityGroupAllocateRead(d,meta)
+	return resourceRedisSecurityGroupAllocateRead(d, meta)
 }
 
 func resourceRedisSecurityGroupAllocateDelete(d *schema.ResourceData, meta interface{}) error {
+	var (
+		err error
+	)
+	_, err = readRedisSecurityGroup(d, meta, d.Get("security_group_id").(string))
+	if err != nil {
+		return err
+	}
+
 	conn := meta.(*KsyunClient).kcsv1conn
 	createReq := make(map[string]interface{})
-	if az, ok := d.GetOk("available_zone"); ok {
-		createReq["AvailableZone"] = az
-	}
+	createReq["AvailableZone"] = d.Get("available_zone")
 	createReq["SecurityGroupId"] = d.Get("security_group_id")
 	ids := SchemaSetToStringSlice(d.Get("cache_ids"))
 	for i, id := range ids {
@@ -185,10 +191,10 @@ func resourceRedisSecurityGroupAllocateDelete(d *schema.ResourceData, meta inter
 	})
 }
 
-func readRedisSecurityGroupAllocate(d *schema.ResourceData, meta interface{}) (map[string]interface{}, error){
+func readRedisSecurityGroupAllocate(d *schema.ResourceData, meta interface{}) (map[string]interface{}, error) {
 	var (
-		resp *map[string]interface{}
-		err  error
+		resp      *map[string]interface{}
+		err       error
 		instances []interface{}
 	)
 	currentCount := int64(0)
@@ -198,7 +204,7 @@ func readRedisSecurityGroupAllocate(d *schema.ResourceData, meta interface{}) (m
 	readReq["SecurityGroupId"] = d.Get("security_group_id")
 	readReq["Limit"] = 1000
 	readReq["FilterCache"] = true
-	for{
+	for {
 		readReq["Offset"] = currentCount
 		integrationAzConf := &IntegrationRedisAzConf{
 			resourceData: d,
@@ -214,26 +220,26 @@ func readRedisSecurityGroupAllocate(d *schema.ResourceData, meta interface{}) (m
 		logger.Debug(logger.ReqFormat, action, readReq)
 		resp, err = integrationAzConf.integrationRedisAz()
 		if err != nil {
-			return nil,fmt.Errorf("error on reading redis security group allocate instances %q, %s", d.Id(), err)
+			return nil, fmt.Errorf("error on reading redis security group allocate instances %q, %s", d.Id(), err)
 		}
 		logger.Debug(logger.RespFormat, action, readReq, *resp)
 		data := (*resp)["Data"].(map[string]interface{})
 		total = int64(data["total"].(float64))
 		lists := data["list"].([]interface{})
-		for _, v := range lists  {
+		for _, v := range lists {
 			instances = append(instances, v)
 		}
 		currentCount = int64(len(instances))
-		if currentCount == total{
+		if currentCount == total {
 			data["list"] = instances
-			return data,err
+			return data, err
 		}
 	}
 }
 
 func resourceRedisSecurityGroupAllocateRead(d *schema.ResourceData, meta interface{}) error {
-	data,err := readRedisSecurityGroupAllocate(d,meta)
-	if err !=nil {
+	data, err := readRedisSecurityGroupAllocate(d, meta)
+	if err != nil {
 		return err
 	}
 	extra := map[string]SdkResponseMapping{
@@ -252,7 +258,7 @@ func resourceRedisSecurityGroupAllocateRead(d *schema.ResourceData, meta interfa
 	return nil
 }
 
-func processRedisSecurityGroupRuleAllocate(d *schema.ResourceData, meta interface{}, transform map[string]SdkReqTransform, isUpdate bool,sgId string) error {
+func processRedisSecurityGroupRuleAllocate(d *schema.ResourceData, meta interface{}, transform map[string]SdkReqTransform, isUpdate bool, sgId string) error {
 	var (
 		req    map[string]interface{}
 		resp   *map[string]interface{}
@@ -262,12 +268,12 @@ func processRedisSecurityGroupRuleAllocate(d *schema.ResourceData, meta interfac
 	req, err = SdkRequestAutoMapping(d, resourceRedisSecurityGroup(), false, transform, nil)
 	if len(req) > 0 {
 		conn := meta.(*KsyunClient).kcsv1conn
-		if sgId == ""{
+		if sgId == "" {
 			sgId = d.Id()
 		}
 		//read one time and merge available_zone
 		resp, err = readRedisSecurityGroup(d, meta, sgId)
-		if err != nil{
+		if err != nil {
 			return err
 		}
 		req["AvailableZone"] = d.Get("available_zone")
