@@ -1,11 +1,11 @@
 package ksyun
 
 import (
+	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
 // redis security group rule
-// Deprecated: Use ksyun.resourceRedisSecurityGroup instead.
 func resourceRedisSecurityGroupRule() *schema.Resource {
 	return &schema.Resource{
 		Create: resourceRedisSecurityGroupRuleCreate,
@@ -14,13 +14,7 @@ func resourceRedisSecurityGroupRule() *schema.Resource {
 		Read:   resourceRedisSecurityGroupRuleRead,
 		Importer: &schema.ResourceImporter{
 			State: func(d *schema.ResourceData, i interface{}) ([]*schema.ResourceData, error) {
-				var err error
-				err = d.Set("security_group_id",d.Id())
-				if err !=nil {
-					return  nil,err
-				}
-				d.SetId(d.Id()+"-rules")
-				return []*schema.ResourceData{d},err
+				return conflictResourceImport("security_group_id", "rule", "rules", d)
 			},
 		},
 		Schema: map[string]*schema.Schema{
@@ -35,13 +29,30 @@ func resourceRedisSecurityGroupRule() *schema.Resource {
 				Required: true,
 				ForceNew: true,
 			},
+
+			"rule": {
+				Type:          schema.TypeString,
+				Optional:      true,
+				ForceNew:      true,
+				ConflictsWith: []string{"rules"},
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					return conflictResourceDiffSuppressForSingle("rules", old, new, d)
+				},
+			},
+
 			"rules": {
 				Type:     schema.TypeSet,
-				Required: true,
+				Optional: true,
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
-				Set: schema.HashString,
+				Set:           schema.HashString,
+				Deprecated:    "Use resourceRedisSecurityGroup().rules instead",
+				ConflictsWith: []string{"rule"},
+				Computed:      true,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+					return conflictResourceDiffSuppressForMultiple("rule", "rules", d)
+				},
 			},
 		},
 	}
@@ -49,39 +60,50 @@ func resourceRedisSecurityGroupRule() *schema.Resource {
 
 func resourceRedisSecurityGroupRuleCreate(d *schema.ResourceData, meta interface{}) error {
 	var (
-		err  error
+		use string
+		err error
 	)
+	use, err = checkConflictOnCreate("rule", "rules", d)
+	if err != nil {
+		return err
+	}
 	transform := map[string]SdkReqTransform{
 		"rules": {
 			mapping: "Cidrs",
 			Type:    TransformWithN,
 		},
+		"rule": {
+			mapping: "Cidrs",
+			Type:    TransformSingleN,
+		},
 	}
-	err = processRedisSecurityGroupRule(d, meta, transform, false,d.Get("security_group_id").(string))
+	err = processRedisSecurityGroupRule(d, meta, transform, false, d.Get("security_group_id").(string))
 	if err != nil {
 		return err
 	}
-	d.SetId(d.Get("security_group_id").(string)+"-rules")
-	return resourceRedisSecurityGroupRuleRead(d,meta)
+	conflictResourceSetId(use, "security_group_id", "rule", "rules", d)
+	return resourceRedisSecurityGroupRuleRead(d, meta)
 }
 
 func resourceRedisSecurityGroupRuleDelete(d *schema.ResourceData, meta interface{}) error {
 	var (
 		resp *map[string]interface{}
 		err  error
-		del []interface{}
+		del  []interface{}
 	)
-	resp, err = readRedisSecurityGroup(d, meta,  d.Get("security_group_id").(string))
+	resp, err = readRedisSecurityGroup(d, meta, d.Get("security_group_id").(string))
 	if err != nil {
 		return err
 	}
+	current := make(map[string]string)
 	data := (*resp)["Data"].(map[string]interface{})
 
 	//get rule id for del
-	if rules,ok := data["rules"]; ok{
-		for _,r := range rules.([]interface{}){
+	if rules, ok := data["rules"]; ok {
+		for _, r := range rules.([]interface{}) {
 			rule := r.(map[string]interface{})
-			del = append(del,rule["id"])
+			del = append(del, rule["id"])
+			current[rule["cidr"].(string)] = rule["id"].(string)
 		}
 	}
 
@@ -90,14 +112,28 @@ func resourceRedisSecurityGroupRuleDelete(d *schema.ResourceData, meta interface
 			mapping: "SecurityGroupRuleId",
 			Type:    TransformWithN,
 			ValueFunc: func(data *schema.ResourceData) (interface{}, bool) {
-				if len(del) > 0{
-					return del,true
+				if len(del) > 0 && checkMultipleExist("rules", d) {
+					return del, true
 				}
-				return nil,true
+				return nil, true
+			},
+		},
+		"rule": {
+			mapping: "SecurityGroupRuleId",
+			Type:    TransformSingleN,
+			ValueFunc: func(data *schema.ResourceData) (interface{}, bool) {
+				if !checkMultipleExist("rules", d) {
+					if len(current) > 0 {
+						if id, ok := current[d.Get("rule").(string)]; ok {
+							return id, true
+						}
+					}
+				}
+				return nil, true
 			},
 		},
 	}
-	err = processRedisSecurityGroupRule(d, meta, transformDel, true,d.Get("security_group_id").(string))
+	err = processRedisSecurityGroupRule(d, meta, transformDel, true, d.Get("security_group_id").(string))
 	if err != nil {
 		return err
 	}
@@ -105,98 +141,11 @@ func resourceRedisSecurityGroupRuleDelete(d *schema.ResourceData, meta interface
 }
 
 func resourceRedisSecurityGroupRuleUpdate(d *schema.ResourceData, meta interface{}) error {
-	if d.HasChange("rules") {
-		var (
-			resp *map[string]interface{}
-			err  error
-			oldArray []string
-			newArray []string
-			add []interface{}
-			del []interface{}
-		)
-		resp, err = readRedisSecurityGroup(d, meta, d.Get("security_group_id").(string))
-		if err != nil {
-			return err
-		}
-		data := (*resp)["Data"].(map[string]interface{})
-		rulesMap :=make(map[string]interface{})
-		//get rule id for del
-		if rules,ok := data["rules"]; ok{
-			for _,r := range rules.([]interface{}){
-				rule := r.(map[string]interface{})
-				rulesMap[rule["cidr"].(string)] = rule["id"]
-			}
-		}
-		o, n := d.GetChange("rules")
-		for _, v := range o.(*schema.Set).List() {
-			oldArray = append(oldArray, v.(string))
-		}
-		for _, v := range n.(*schema.Set).List() {
-			newArray = append(newArray, v.(string))
-		}
-		for _, a := range oldArray {
-			if _, ok := rulesMap[a];!ok{
-				continue
-			}
-			exist := false
-			for _, b := range newArray {
-				if a == b {
-					exist = true
-					break
-				}
-			}
-			if !exist {
-				del = append(del, rulesMap[a])
-			}
-		}
-		for _, a := range newArray {
-			exist := false
-			for _, b := range oldArray {
-				if a == b {
-					exist = true
-					break
-				}
-			}
-			if !exist {
-				add = append(add, a)
-			}
-		}
-		transformAdd := map[string]SdkReqTransform{
-			"rules": {
-				mapping: "Cidrs",
-				Type:    TransformWithN,
-				ValueFunc: func(data *schema.ResourceData) (interface{}, bool) {
-					if len(add) > 0{
-						return add,true
-					}
-					return nil,true
-				},
-			},
-		}
-		err = processRedisSecurityGroupRule(d, meta, transformAdd, false,d.Get("security_group_id").(string))
-		if err != nil {
-			return err
-		}
-		transformDel := map[string]SdkReqTransform{
-			"rules": {
-				mapping: "SecurityGroupRuleId",
-				Type:    TransformWithN,
-				ValueFunc: func(data *schema.ResourceData) (interface{}, bool) {
-					if len(del) > 0{
-						return del,true
-					}
-					return nil,true
-				},
-			},
-		}
-		err = processRedisSecurityGroupRule(d, meta, transformDel, true,d.Get("security_group_id").(string))
-		if err != nil {
-			return err
-		}
-
+	err := updateRedisSecurityGroupRules(d, meta, d.Get("security_group_id").(string))
+	if err != nil {
+		return err
 	}
-
-	return resourceRedisSecurityGroupRuleRead(d,meta)
+	return resourceRedisSecurityGroupRuleRead(d, meta)
 }
 
 func resourceRedisSecurityGroupRuleRead(d *schema.ResourceData, meta interface{}) error {
@@ -209,8 +158,9 @@ func resourceRedisSecurityGroupRuleRead(d *schema.ResourceData, meta interface{}
 		return err
 	}
 	data := (*resp)["Data"].(map[string]interface{})
-	extra := map[string]SdkResponseMapping{
-		"rules": {
+	extra := make(map[string]SdkResponseMapping)
+	if checkMultipleExist("rules", d) {
+		extra["rules"] = SdkResponseMapping{
 			Field: "rules",
 			FieldRespFunc: func(i interface{}) interface{} {
 				var cidr []string
@@ -219,10 +169,27 @@ func resourceRedisSecurityGroupRuleRead(d *schema.ResourceData, meta interface{}
 				}
 				return cidr
 			},
-		},
+		}
+	} else {
+		if !checkValueInSliceMap(data["rules"].([]interface{}), "cidr", d.Get("rule")) {
+			return fmt.Errorf("can not read rule [%s] from securityGroup [%s]", d.Get("rule"),
+				d.Get("security_group_id").(string))
+		}
+		extra["rules"] = SdkResponseMapping{
+			Field: "rule",
+			FieldRespFunc: func(i interface{}) interface{} {
+				var cidr string
+				for _, v := range i.([]interface{}) {
+					if v.(map[string]interface{})["cidr"].(string) == d.Get("rule").(string) {
+						cidr = v.(map[string]interface{})["cidr"].(string)
+						break
+					}
+				}
+				return cidr
+			},
+		}
 	}
+
 	SdkResponseAutoResourceData(d, resourceRedisSecurityGroupRule(), data, extra)
 	return nil
 }
-
-
