@@ -52,8 +52,13 @@ func conflictResourceSetId(use string, parent string, single string, multiple st
 }
 
 func conflictResourceDiffSuppressForSingle(multiple string, old, new string, d *schema.ResourceData) bool {
-	if d.Get(multiple) != nil && len(d.Get(multiple).(*schema.Set).List()) > 0 {
-		return true
+	if d.Get(multiple) != nil {
+		if v, ok := d.Get(multiple).(*schema.Set); ok && len(v.List()) > 0 {
+			return true
+		}
+		if v, ok := d.Get(multiple).(string); ok && v != "" {
+			return true
+		}
 	}
 	if strings.Contains(d.Id(), ":"+multiple) {
 		return true
@@ -61,7 +66,6 @@ func conflictResourceDiffSuppressForSingle(multiple string, old, new string, d *
 	if old != "" && new == "" {
 		return true
 	}
-
 	return false
 }
 
@@ -70,7 +74,7 @@ func conflictResourceDiffSuppressForMultiple(single string, multiple string, d *
 		return true
 	}
 
-	if !strings.Contains(d.Id(), ":"+multiple) {
+	if d.Id() != "" && !strings.Contains(d.Id(), ":"+multiple) {
 		return true
 	}
 

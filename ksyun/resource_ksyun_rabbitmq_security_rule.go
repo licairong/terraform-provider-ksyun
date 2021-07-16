@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/terraform-providers/terraform-provider-ksyun/logger"
 	"strings"
 	"time"
 )
@@ -16,7 +15,9 @@ func resourceKsyunRabbitmqSecurityRule() *schema.Resource {
 		Update: resourceRabbitmqSecurityRuleUpdate,
 		Delete: resourceRabbitmqSecurityRuleDelete,
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			State: func(d *schema.ResourceData, i interface{}) ([]*schema.ResourceData, error) {
+				return conflictResourceImport("instance_id", "cidr", "cidrs", d)
+			},
 		},
 		Timeouts: &schema.ResourceTimeout{
 			Create: schema.DefaultTimeout(3 * time.Hour),
@@ -27,152 +28,94 @@ func resourceKsyunRabbitmqSecurityRule() *schema.Resource {
 			"instance_id": {
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
+			},
+			"cidr": {
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"cidrs"},
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) (r bool) {
+					return conflictResourceDiffSuppressForSingle("cidrs", old, new, d)
+				},
+				ForceNew: true,
 			},
 			"cidrs": {
 				Type:     schema.TypeString,
-				Required: true,
-			},
-			"rules": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"to_port": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"from_port": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"cidr": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"protocol": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"id": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-					},
+				Optional: true,
+				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) (r bool) {
+					r = conflictResourceDiffSuppressForMultiple("cidr", "cidrs", d)
+					if r {
+						return r
+					}
+					return rabbitmqSplitDiffSuppressFunc(",")(k, old, new, d)
 				},
+				ValidateFunc:  rabbitmqSplitSchemaValidateFunc(","),
+				Deprecated:    "`cidrs` is deprecated use resourceKsyunRabbitmq.cidrs instead ",
+				ConflictsWith: []string{"cidr"},
 			},
 		},
 	}
 }
 
 func resourceRabbitmqSecurityRuleUpdate(d *schema.ResourceData, meta interface{}) error {
-	d.Partial(true)
-	defer d.Partial(false)
-
-	conn := meta.(*KsyunClient).rabbitmqconn
-
-	if d.HasChange("cidrs") {
-		d.SetPartial("cidrs")
-		var addRules, deleteRules []string
-
-		oldCidr, newCidr := d.GetChange("cidrs")
-		if newCidr.(string) == "" {
-			rules := d.Get("rules").([]interface{})
-			for _, rule := range rules {
-				r := rule.(map[string]interface{})
-				deleteRules = append(deleteRules, r["cidr"].(string))
-			}
-		} else if oldCidr.(string) == "" {
-			addRules = strings.Split(newCidr.(string), ",")
-		} else {
-			oldCidrs := strings.Split(oldCidr.(string), ",")
-			newCidrs := strings.Split(newCidr.(string), ",")
-
-			for _, oldRule := range oldCidrs {
-				if !strings.Contains(newCidr.(string), oldRule) {
-					deleteRules = append(deleteRules, oldRule)
-				}
-			}
-
-			for _, newRule := range newCidrs {
-				if !strings.Contains(oldCidr.(string), newRule) {
-					addRules = append(addRules, newRule)
-				}
-			}
-		}
-		if len(addRules) > 0 {
-			createReq := make(map[string]interface{})
-			createReq["InstanceId"] = d.Id()
-			createReq["cidrs"] = strings.Join(addRules, ",")
-			logger.Debug(logger.ReqFormat, "AddSecurityGroupRule", createReq)
-			resp, err := conn.AddSecurityGroupRule(&createReq)
-			if err != nil {
-				return fmt.Errorf("error on add instance security rule: %s", err)
-			}
-			logger.Debug(logger.RespFormat, "AddSecurityGroupRule", createReq, *resp)
-		}
-
-		if len(deleteRules) > 0 {
-			deleteReq := make(map[string]interface{})
-			deleteReq["InstanceId"] = d.Id()
-			deleteReq["cidrs"] = strings.Join(deleteRules, ",")
-			logger.Debug(logger.ReqFormat, "DeleteSecurityGroupRules", deleteReq)
-			resp, err := conn.DeleteSecurityGroupRules(&deleteReq)
-			if err != nil {
-				return fmt.Errorf("error on delete instance security rule: %s", err)
-			}
-			logger.Debug(logger.RespFormat, "DeleteSecurityGroupRules", deleteReq, *resp)
-		}
+	var (
+		err error
+		add string
+		del string
+	)
+	err, add, del = validModifyRabbitmqInstanceRules(d, resourceKsyunRabbitmqSecurityRule(), meta, d.Get("instance_id").(string), true)
+	if err != nil {
+		return fmt.Errorf("error on update rabbit Instance sg rule: %s", err)
 	}
-
+	err = addRabbitmqRules(d, meta, d.Get("instance_id").(string), add)
+	if err != nil {
+		return fmt.Errorf("error on update rabbit Instance sg rule: %s", err)
+	}
+	_, err = deleteRabbitmqRules(d, meta, d.Get("instance_id").(string), del)
+	if err != nil {
+		return fmt.Errorf("error on update rabbit Instance sg rule: %s", err)
+	}
 	return resourceRabbitmqSecurityRuleRead(d, meta)
 }
 
 func resourceRabbitmqSecurityRuleCreate(d *schema.ResourceData, meta interface{}) error {
-	cidrs := d.Get("cidrs")
-	if cidrs.(string) == "" {
-		return fmt.Errorf("error on set instance security rule: cidrs is empty")
-	}
-	createReq := make(map[string]interface{})
-	createReq["InstanceId"] = d.Get("instance_id")
-	createReq["cidrs"] = cidrs
-
-	conn := meta.(*KsyunClient).rabbitmqconn
-	logger.Debug(logger.ReqFormat, "AddSecurityGroupRule", createReq)
-	resp, err := conn.AddSecurityGroupRule(&createReq)
+	var (
+		use string
+		err error
+		add string
+	)
+	use, err = checkConflictOnCreate("cidr", "cidrs", d)
 	if err != nil {
-		return fmt.Errorf("error on set instance security rule: %s", err)
+		return err
 	}
-	logger.Debug(logger.RespFormat, "AddSecurityGroupRule", createReq, *resp)
-
-	d.SetId(createReq["InstanceId"].(string))
-
-	return nil
+	err, add, _ = validModifyRabbitmqInstanceRules(d, resourceKsyunRabbitmqSecurityRule(), meta, d.Get("instance_id").(string), false)
+	if err != nil {
+		return fmt.Errorf("error on create rabbit Instance sg rule: %s", err)
+	}
+	err = addRabbitmqRules(d, meta, d.Get("instance_id").(string), add)
+	if err != nil {
+		return fmt.Errorf("error on create rabbit Instance sg rule: %s", err)
+	}
+	conflictResourceSetId(use, "instance_id", "cidr", "cidrs", d)
+	return resourceRabbitmqSecurityRuleRead(d, meta)
 }
 
 func resourceRabbitmqSecurityRuleDelete(d *schema.ResourceData, meta interface{}) error {
-	conn := meta.(*KsyunClient).rabbitmqconn
-
-	rules := d.Get("rules").([]interface{})
-	var cidrs []string
-	for _, rule := range rules {
-		r := rule.(map[string]interface{})
-		cidrs = append(cidrs, r["cidr"].(string))
+	var (
+		err  error
+		del  string
+		resp *map[string]interface{}
+	)
+	if checkMultipleExist("cidrs", d) {
+		del = d.Get("cidrs").(string)
+	} else {
+		del = d.Get("cidr").(string)
 	}
 
-	deleteReq := make(map[string]interface{})
-	deleteReq["InstanceId"] = d.Id()
-	deleteReq["Cidrs"] = strings.Join(cidrs, ",")
-	action := "DeleteSecurityGroupRules"
-
 	return resource.Retry(25*time.Minute, func() *resource.RetryError {
-		logger.Debug(logger.ReqFormat, action, deleteReq)
-		resp, err := conn.DeleteSecurityGroupRules(&deleteReq)
-		logger.Debug(logger.RespFormat, action, deleteReq, *resp, err)
-		if err == nil  {
-			data := (*resp)["Data"].([]interface{})
-			if len(data) == 0 {
-				return nil
-			}
+		resp, err = deleteRabbitmqRules(d, meta, d.Get("instance_id").(string), del)
+		if err == nil {
+			return nil
 		}
 		if err != nil && inUseError(err) {
 			return resource.RetryableError(err)
@@ -182,34 +125,35 @@ func resourceRabbitmqSecurityRuleDelete(d *schema.ResourceData, meta interface{}
 }
 
 func resourceRabbitmqSecurityRuleRead(d *schema.ResourceData, meta interface{}) error {
-	conn := meta.(*KsyunClient).rabbitmqconn
-	readReq := make(map[string]interface{})
-	readReq["InstanceId"] = d.Id()
 
-	logger.Debug(logger.ReqFormat, "ListSecurityGroupRules", readReq)
-	resp, err := conn.DescribeSecurityGroupRules(&readReq)
+	var (
+		data   []interface{}
+		err    error
+		result string
+	)
+	data, err = readRabbitmqInstanceRules(d, meta, d.Get("instance_id").(string))
 	if err != nil {
-		return fmt.Errorf("error on reading instance security rule %q, %s", d.Id(), err)
+		return err
 	}
-	logger.Debug(logger.RespFormat, "ListSecurityGroupRules", readReq, *resp)
-
-	rules := (*resp)["Data"].([]interface{})
-
-	var result []map[string]string
-	for _, v := range rules {
-		group := v.(map[string]interface{})
-		rule := map[string]string{}
-		rule["id"] = group["Id"].(string)
-		rule["cidr"] = group["Cidr"].(string)
-		rule["protocol"] = group["Protocol"].(string)
-		rule["from_port"] = group["FromPort"].(string)
-		rule["to_port"] = group["ToPort"].(string)
-		result = append(result, rule)
+	if checkMultipleExist("cidrs", d) {
+		for _, v := range data {
+			group := v.(map[string]interface{})
+			if strings.Contains(d.Get("cidrs").(string), group["Cidr"].(string)) {
+				result = result + group["Cidr"].(string) + ","
+			}
+		}
+		if result != "" {
+			result = result[0 : len(result)-1]
+		}
+		err = d.Set("cidrs", result)
+	} else {
+		if !checkValueInSliceMap(data, "Cidr", d.Get("cidr")) {
+			return fmt.Errorf("can not read cidr [%s] from rabbitmq instance [%s]", d.Get("cidr"),
+				d.Get("instance_id").(string))
+		}
+		result = d.Get("cidr").(string)
+		err = d.Set("cidr", result)
 	}
 
-	if err := d.Set("rules", result); err != nil {
-		return fmt.Errorf("error set data %v :%v", result, err)
-	}
-
-	return nil
+	return err
 }

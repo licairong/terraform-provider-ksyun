@@ -49,7 +49,6 @@ func resourceRedisSecurityGroupRule() *schema.Resource {
 				Set:           schema.HashString,
 				Deprecated:    "Use resourceRedisSecurityGroup().rules instead",
 				ConflictsWith: []string{"rule"},
-				Computed:      true,
 				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
 					return conflictResourceDiffSuppressForMultiple("rule", "rules", d)
 				},
@@ -163,11 +162,7 @@ func resourceRedisSecurityGroupRuleRead(d *schema.ResourceData, meta interface{}
 		extra["rules"] = SdkResponseMapping{
 			Field: "rules",
 			FieldRespFunc: func(i interface{}) interface{} {
-				var cidr []string
-				for _, v := range i.([]interface{}) {
-					cidr = append(cidr, v.(map[string]interface{})["cidr"].(string))
-				}
-				return cidr
+				return setRedisSgCidrs(i.([]interface{}), d)
 			},
 		}
 	} else {

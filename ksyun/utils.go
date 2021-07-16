@@ -248,6 +248,15 @@ func transformWithN(v interface{}, k string, t SdkReqTransform, req *map[string]
 			}
 		}
 	}
+	if x, ok := v.(string); ok {
+		for i, value := range strings.Split(x, ",") {
+			if strings.TrimSpace(t.mapping) == "" {
+				(*req)[Downline2Hump(k)+"."+strconv.Itoa(i+1)] = value
+			} else {
+				(*req)[t.mapping+"."+strconv.Itoa(i+1)] = value
+			}
+		}
+	}
 
 	return nil
 }

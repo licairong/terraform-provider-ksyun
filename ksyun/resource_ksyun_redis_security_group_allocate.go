@@ -110,7 +110,7 @@ func resourceRedisSecurityGroupAllocateRead(d *schema.ResourceData, meta interfa
 		}
 		extra["list"] = SdkResponseMapping{
 			Field:         "cache_ids",
-			FieldRespFunc: redisSgAllocateFieldRespFunc(),
+			FieldRespFunc: redisSgAllocateFieldRespFunc(d),
 		}
 	} else {
 		if !checkValueInSliceMap(data["list"].([]interface{}), "id", d.Get("cache_id")) {
