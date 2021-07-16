@@ -3,9 +3,9 @@ package ksyun
 import (
 	"errors"
 	"fmt"
-	"github.com/KscSDK/ksc-sdk-go/service/rabbitmq"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"github.com/terraform-providers/terraform-provider-ksyun/logger"
 	"strings"
 	"time"
@@ -30,35 +30,48 @@ func resourceKsyunRabbitmq() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
+			"engine_version": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
+			"instance_type": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
+			"mode": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"1",
+				}, false),
+			},
+			"ssd_disk": {
+				Type:     schema.TypeInt,
+				Required: true,
+				ForceNew: true,
+			},
+			"vpc_id": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
+			"subnet_id": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
 			"instance_password": {
 				Type:      schema.TypeString,
 				Required:  true,
 				Sensitive: true,
 			},
-			"vpc_id": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-			"subnet_id": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-			"engine_version": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-			"project_id": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
-			},
-			"project_name": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
 			"bill_type": {
 				Type:     schema.TypeInt,
 				Required: true,
+				ForceNew: true,
 			},
 			"duration": {
 				Type:     schema.TypeInt,
@@ -69,31 +82,62 @@ func resourceKsyunRabbitmq() *schema.Resource {
 					}
 					return true
 				},
+				ForceNew: true,
 			},
-			"mode": {
+			"project_id": {
 				Type:     schema.TypeString,
-				Required: true,
-			},
-			"instance_type": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
-			"ssd_disk": {
-				Type:     schema.TypeInt,
-				Required: true,
+				Optional: true,
+				Computed: true,
 			},
 			"node_num": {
-				Type:     schema.TypeInt,
-				Computed: true,
+				Type:         schema.TypeInt,
+				Optional:     true,
+				Default:      3,
+				ValidateFunc: validation.IntBetween(3, 3),
+				ForceNew:     true,
 			},
 			"availability_zone": {
 				Type:     schema.TypeString,
 				Optional: true,
 				Computed: true,
+				ForceNew: true,
 			},
 			"enable_plugins": {
-				Type:     schema.TypeString,
+				Type:             schema.TypeString,
+				Optional:         true,
+				ValidateFunc:     rabbitmqSplitSchemaValidateFunc(","),
+				DiffSuppressFunc: rabbitmqSplitDiffSuppressFunc(","),
+			},
+			"force_restart": {
+				Type:     schema.TypeBool,
 				Optional: true,
+				Default:  false,
+			},
+			//"band_width": {
+			//	Type:     schema.TypeInt,
+			//	Optional: true,
+			//	Computed: true,
+			//	DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
+			//		if v, ok := d.GetOk("enable_eip"); ok && v.(bool) {
+			//			return false
+			//		}
+			//		return true
+			//	},
+			//},
+			"enable_eip": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Default:  false,
+			},
+			"cidrs": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				DiffSuppressFunc: rabbitmqSplitDiffSuppressFunc(","),
+				ValidateFunc:     rabbitmqSplitSchemaValidateFunc(","),
+			},
+			"project_name": {
+				Type:     schema.TypeString,
+				Computed: true,
 			},
 			"instance_id": {
 				Type:     schema.TypeString,
@@ -183,14 +227,32 @@ func resourceKsyunRabbitmq() *schema.Resource {
 
 func resourceRabbitmqInstanceCreate(d *schema.ResourceData, meta interface{}) error {
 	var (
-		resp *map[string]interface{}
-		err  error
-		az   string
+		resp    *map[string]interface{}
+		err     error
+		addCidr string
 	)
+
+	transform := map[string]SdkReqTransform{
+		"force_restart": {Ignore: true},
+		"cidrs":         {Ignore: true},
+	}
 
 	conn := meta.(*KsyunClient).rabbitmqconn
 	r := resourceKsyunRabbitmq()
-	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
+	req, err := SdkRequestAutoMapping(d, r, false, transform, nil, SdkReqParameter{
+		false,
+	})
+	if err != nil {
+		return fmt.Errorf("error on create Instance: %s", err)
+	}
+	err = checkRabbitmqAvailabilityZone(d, meta, req)
+	if err != nil {
+		return fmt.Errorf("error on create Instance: %s", err)
+	}
+	err, _ = checkRabbitmqPlugins(d, meta, req)
+	if err != nil {
+		return fmt.Errorf("error on create Instance: %s", err)
+	}
 	action := "CreateInstance"
 	logger.Debug(logger.ReqFormat, action, req)
 	if resp, err = conn.CreateInstance(&req); err != nil {
@@ -200,54 +262,25 @@ func resourceRabbitmqInstanceCreate(d *schema.ResourceData, meta interface{}) er
 	if resp != nil {
 		d.SetId((*resp)["Data"].(map[string]interface{})["InstanceId"].(string))
 	}
-	stateConf := &resource.StateChangeConf{
-		Pending:    []string{"creating"},
-		Target:     []string{"running"},
-		Refresh:    rabbitmqStateRefreshForCreateFunc(conn, az, d.Id(), []string{"running"}),
-		Timeout:    d.Timeout(schema.TimeoutCreate),
-		Delay:      20 * time.Second,
-		MinTimeout: 1 * time.Minute,
+	err = allocateRabbitmqInstanceEip(d, meta)
+	if err != nil {
+		return fmt.Errorf("error on create Instance: %s", err)
 	}
-	_, err = stateConf.WaitForState()
+
+	err = checkRabbitmqState(d, meta, d.Timeout(schema.TimeoutCreate))
+	if err != nil {
+		return fmt.Errorf("error on create Instance: %s", err)
+	}
+	err, addCidr, _ = validModifyRabbitmqInstanceRules(d, resourceKsyunRabbitmq(), meta, "", false)
+	if err != nil {
+		return fmt.Errorf("error on create Instance: %s", err)
+	}
+	err = addRabbitmqRules(d, meta, "", addCidr)
 	if err != nil {
 		return fmt.Errorf("error on create Instance: %s", err)
 	}
 
 	return resourceRabbitmqInstanceRead(d, meta)
-}
-
-func rabbitmqStateRefreshForCreateFunc(conn *rabbitmq.Rabbitmq, az string, instanceId string, target []string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-
-		queryReq := map[string]interface{}{"InstanceId": instanceId}
-		logger.Debug(logger.ReqFormat, "DescribeRabbitmqInstance", queryReq)
-
-		resp, err := conn.DescribeInstance(&queryReq)
-		if err != nil {
-			return nil, "", err
-		}
-		logger.Debug(logger.RespFormat, "DescribeRabbitmqInstance", queryReq, *resp)
-
-		item, ok := (*resp)["Data"].(map[string]interface{})
-
-		if !ok {
-			return nil, "", fmt.Errorf("no instance information was queried. InstanceId:%s", instanceId)
-		}
-		status := item["Status"].(string)
-		if status == "error" {
-			return nil, "", fmt.Errorf("instance create error, status:%v", status)
-		}
-
-		for k, v := range target {
-			if v == status {
-				return resp, status, nil
-			}
-			if k == len(target)-1 {
-				status = "creating"
-			}
-		}
-		return resp, status, nil
-	}
 }
 
 func resourceRabbitmqInstanceDelete(d *schema.ResourceData, meta interface{}) error {
@@ -298,59 +331,141 @@ func resourceRabbitmqInstanceDelete(d *schema.ResourceData, meta interface{}) er
 	})
 }
 
-func resourceRabbitmqInstanceUpdate(d *schema.ResourceData, meta interface{}) error {
-	d.Partial(true)
-	defer d.Partial(false)
-	conn := meta.(*KsyunClient).rabbitmqconn
-	// rename
-	if d.HasChange("instance_name") {
-		d.SetPartial("instance_name")
-		v, ok := d.GetOk("instance_name")
-		if !ok {
-			return fmt.Errorf("cann't change instance_name to empty string")
-		}
-		rename := make(map[string]interface{})
-		rename["instanceId"] = d.Id()
-		rename["instanceName"] = v.(string)
-		logger.Debug(logger.ReqFormat, "RenameRabbitmqName", rename)
-		resp, err := conn.Rename(&rename)
-		if err != nil {
-			return fmt.Errorf("error on rename instance %q, %s", d.Id(), err)
-		}
-		logger.Debug(logger.RespFormat, "RenameRabbitmqName", rename, *resp)
+func resourceRabbitmqInstanceUpdate(d *schema.ResourceData, meta interface{}) (err error) {
+	var (
+		enable  string
+		disable string
+		addCidr string
+		delCidr string
+	)
+	//validModifyRabbitmqInstancePlugins before update resource
+	err, enable, disable = validModifyRabbitmqInstancePlugins(d, meta)
+	if err != nil {
+		return fmt.Errorf("error on update instance plugins %q, %s", d.Id(), err)
 	}
 
+	err, addCidr, delCidr = validModifyRabbitmqInstanceRules(d, resourceKsyunRabbitmq(), meta, "", true)
+	if err != nil {
+		return fmt.Errorf("error on update instance cidrs %q, %s", d.Id(), err)
+	}
+
+	err = modifyRabbitmqInstanceNameAndProject(d, meta)
+
+	if err != nil {
+		return fmt.Errorf("error on update instance plugins %q, %s", d.Id(), err)
+	}
+
+	err = modifyRabbitmqInstancePassword(d, meta)
+
+	if err != nil {
+		return fmt.Errorf("error on update instance plugins %q, %s", d.Id(), err)
+	}
+
+	err = allocateRabbitmqInstanceEip(d, meta)
+	if err != nil {
+		return fmt.Errorf("error on create Instance: %s", err)
+	}
+
+	err = deallocateRabbitmqInstanceEip(d, meta)
+	if err != nil {
+		return fmt.Errorf("error on create Instance: %s", err)
+	}
+
+	err = modifyRabbitmqInstancePlugins(d, meta, enable, disable)
+
+	if err != nil {
+		return fmt.Errorf("error on update instance plugins %q, %s", d.Id(), err)
+	}
+
+	err = restartRabbitmqInstance(d, meta)
+	if err != nil {
+		return err
+	}
+
+	err = checkRabbitmqState(d, meta, d.Timeout(schema.TimeoutUpdate))
+	if err != nil {
+		return err
+	}
+
+	err = addRabbitmqRules(d, meta, "", addCidr)
+	if err != nil {
+		return fmt.Errorf("error on update instance cidrs %q, %s", d.Id(), err)
+	}
+
+	_, err = deleteRabbitmqRules(d, meta, "", delCidr)
+	if err != nil {
+		return fmt.Errorf("error on update instance cidrs %q, %s", d.Id(), err)
+	}
 	return resourceRabbitmqInstanceRead(d, meta)
 }
 
 func resourceRabbitmqInstanceRead(d *schema.ResourceData, meta interface{}) error {
 	var (
-		item map[string]interface{}
-		resp *map[string]interface{}
-		ok   bool
-		err  error
+		item      map[string]interface{}
+		ok        bool
+		err       error
+		plugins   []interface{}
+		pluginStr string
+		rules     []interface{}
+		ruleStr   string
 	)
 
-	conn := meta.(*KsyunClient).rabbitmqconn
-	queryReq := make(map[string]interface{})
-	queryReq["instanceId"] = d.Id()
-	action := "DescribeInstance"
-	logger.Debug(logger.ReqFormat, action, queryReq)
-	if resp, err = conn.DescribeInstance(&queryReq); err != nil {
-		return fmt.Errorf("error on reading instance %q, %s", d.Id(), err)
+	item, err = readRabbitmqInstance(d, meta, "")
+	if err != nil {
+		return err
 	}
-	logger.Debug(logger.RespFormat, action, queryReq, *resp)
-	if item, ok = (*resp)["Data"].(map[string]interface{}); !ok {
-		return nil
+	if _, ok = item["AvailabilityZone"]; ok {
+		delete(item, "AvailabilityZone")
+	}
+
+	plugins, err = readRabbitmqInstancePlugins(d, meta, "")
+	if err != nil {
+		return err
+	}
+	for _, plugin := range plugins {
+		if int64(plugin.(map[string]interface{})["PluginStatus"].(float64)) == 1 {
+			p := plugin.(map[string]interface{})["PluginName"].(string)
+			if strings.Contains(d.Get("enable_plugins").(string), p) {
+				pluginStr = pluginStr + p + ","
+			}
+
+		}
+	}
+	if pluginStr != "" {
+		item["EnablePlugins"] = pluginStr[0 : len(pluginStr)-1]
 	}
 
 	extra := make(map[string]SdkResponseMapping)
 	extra["AvailabilityZoneEn"] = SdkResponseMapping{
 		Field: "availability_zone",
 	}
-	extra["AvailabilityZone"] = SdkResponseMapping{}
 
+	extra["Eip"] = SdkResponseMapping{
+		Field:    "eip",
+		KeepAuto: true,
+		FieldRespFunc: func(i interface{}) interface{} {
+			if i.(string) != "" {
+				_ = d.Set("enable_eip", true)
+			} else {
+				_ = d.Set("enable_eip", false)
+			}
+			return i
+		},
+	}
+
+	rules, err = readRabbitmqInstanceRules(d, meta, "")
+	if err != nil {
+		return err
+	}
+	for _, rule := range rules {
+		r := rule.(map[string]interface{})["Cidr"].(string)
+		if strings.Contains(d.Get("cidrs").(string), r) {
+			ruleStr = ruleStr + r + ","
+		}
+	}
+	if ruleStr != "" {
+		item["Cidrs"] = ruleStr[0 : len(ruleStr)-1]
+	}
 	SdkResponseAutoResourceData(d, resourceKsyunRabbitmq(), item, extra)
-
-	return nil
+	return d.Set("force_restart", d.Get("force_restart"))
 }

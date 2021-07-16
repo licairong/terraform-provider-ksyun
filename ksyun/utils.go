@@ -239,8 +239,17 @@ func transformWithN(v interface{}, k string, t SdkReqTransform, req *map[string]
 			}
 		}
 	}
-	if x,ok := v.([]interface{});ok{
+	if x, ok := v.([]interface{}); ok {
 		for i, value := range x {
+			if strings.TrimSpace(t.mapping) == "" {
+				(*req)[Downline2Hump(k)+"."+strconv.Itoa(i+1)] = value
+			} else {
+				(*req)[t.mapping+"."+strconv.Itoa(i+1)] = value
+			}
+		}
+	}
+	if x, ok := v.(string); ok {
+		for i, value := range strings.Split(x, ",") {
 			if strings.TrimSpace(t.mapping) == "" {
 				(*req)[Downline2Hump(k)+"."+strconv.Itoa(i+1)] = value
 			} else {
@@ -580,7 +589,7 @@ func SdkResponseAutoResourceData(d *schema.ResourceData, resource *schema.Resour
 					} else if _, ok := r.Elem.(*schema.Schema); ok {
 						if m.FieldRespFunc != nil {
 							value = m.FieldRespFunc(v)
-						}else{
+						} else {
 							value = v
 						}
 					}
@@ -804,4 +813,16 @@ func ModifyProjectInstance(resourceId string, param *map[string]interface{}, met
 		delete(*param, "ProjectId")
 	}
 	return nil
+}
+
+func checkValueInSliceMap(data []interface{}, key string, value interface{}) (c bool) {
+	for _, obj := range data {
+		if m, ok := obj.(map[string]interface{}); ok {
+			if v, ok1 := m[key]; ok1 && v == value {
+				c = true
+				return c
+			}
+		}
+	}
+	return c
 }
