@@ -510,8 +510,6 @@ func validModifyRabbitmqInstancePlugins(d *schema.ResourceData, meta interface{}
 				}
 			}
 		}
-		logger.Debug(logger.ReqFormat, "DemoTest", enableReq)
-		logger.Debug(logger.ReqFormat, "DemoTest", disableReq)
 
 		err, enableFlag, enable = checkEnableOrDisablePlugins(d, meta, enableReq)
 		if err != nil {
@@ -521,8 +519,6 @@ func validModifyRabbitmqInstancePlugins(d *schema.ResourceData, meta interface{}
 		if err != nil {
 			return err, enable, disable
 		}
-		logger.Debug(logger.ReqFormat, "DemoTest", enable)
-		logger.Debug(logger.ReqFormat, "DemoTest", disable)
 		if ((enableFlag && enable != "") || (disableFlag && disable != "")) && !d.Get("force_restart").(bool) {
 			err = fmt.Errorf("some plugin change need restart instance ,must set force_restart true")
 			return err, enable, disable
@@ -572,44 +568,4 @@ func checkEnableOrDisablePlugins(d *schema.ResourceData, meta interface{}, plugi
 		err, restart = checkRabbitmqPlugins(d, meta, r)
 	}
 	return err, restart, str
-}
-
-func rabbitmqSplitDiffSuppressFunc(sep string) schema.SchemaDiffSuppressFunc {
-	return func(k, old, new string, d *schema.ResourceData) bool {
-		olds := strings.Split(old, sep)
-		news := strings.Split(new, sep)
-		count := 0
-		logger.Debug(logger.ReqFormat, "DemoTest", olds)
-		logger.Debug(logger.ReqFormat, "DemoTest", news)
-		if len(olds) != len(news) {
-			return false
-		}
-		for _, o := range olds {
-			for _, n := range news {
-				if o == n {
-					count = count + 1
-				}
-			}
-		}
-		if count == len(olds) {
-			return true
-		}
-		return false
-	}
-}
-
-func rabbitmqSplitSchemaValidateFunc(sep string) schema.SchemaValidateFunc {
-	return func(i interface{}, k string) (warnings []string, errors []error) {
-		v, ok := i.(string)
-		if !ok {
-			errors = append(errors, fmt.Errorf("expected type of %s to be string", k))
-			return warnings, errors
-		}
-		for _, s := range strings.Split(v, sep) {
-			if strings.Count(v, s) > 1 {
-				errors = append(errors, fmt.Errorf(" %s only allow one in %s", s, k))
-			}
-		}
-		return warnings, errors
-	}
 }
