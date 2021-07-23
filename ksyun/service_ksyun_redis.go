@@ -142,7 +142,6 @@ func resourceRedisInstanceSgRead(d *schema.ResourceData, meta interface{}) error
 		return err
 	}
 	if item, ok := (*resp)["Data"].(map[string]interface{}); ok {
-		logger.Debug(logger.ReqFormat, "DemoTest", item)
 		var itemSetSlice []string
 		if sgs, ok := item["list"].([]interface{}); ok {
 			for _, sg := range sgs {
@@ -336,8 +335,6 @@ func modifyRedisInstanceSg(d *schema.ResourceData, meta interface{}) error {
 
 	if len(req) > 0 {
 		oldSg, newSg := d.GetChange("security_group_id")
-		logger.Debug(logger.ReqFormat, "DemoTest", oldSg)
-		logger.Debug(logger.ReqFormat, "DemoTest", newSg)
 		req["CacheId.1"] = d.Id()
 		if oldSg != "" {
 			req["SecurityGroupId"] = oldSg
@@ -454,7 +451,6 @@ func resourceRedisInstanceParameterCheckAndPrepare(d *schema.ResourceData, meta 
 
 	// condition on reset_all_parameters
 	if isUpdate && reset {
-		logger.Debug(logger.ReqFormat, "DemoTest", reset)
 		req["ResetAllParameters"] = reset
 
 		return &req, d.Set("reset_all_parameters", reset)

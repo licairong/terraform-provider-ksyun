@@ -2,12 +2,9 @@ package ksyun
 
 import (
 	"errors"
-	"fmt"
-	"github.com/KscSDK/ksc-sdk-go/service/mongodb"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/terraform-providers/terraform-provider-ksyun/logger"
-	"strings"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 	"time"
 )
 
@@ -30,55 +27,114 @@ func resourceKsyunMongodbInstance() *schema.Resource {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"instance_account": {
+			"db_version": {
 				Type:     schema.TypeString,
-				Required: true,
-			},
-			"instance_password": {
-				Type:     schema.TypeString,
-				Required: true,
+				Optional: true,
+				ForceNew: true,
+				// set stable value before api support query
+				ValidateFunc: validation.StringInSlice([]string{
+					"3.2",
+					"3.6",
+					"4.0",
+				}, false),
+				Default: "3.2",
 			},
 			"instance_class": {
 				Type:     schema.TypeString,
-				Required: true,
-			},
-			"node_num": {
-				Type:     schema.TypeInt,
 				Optional: true,
+				// set stable value before api support query
+				ValidateFunc: validation.StringInSlice([]string{
+					"1C2G",
+					"2C4G",
+					"4C8G",
+					"8C16G",
+					"8C32G",
+					"16C64G",
+					"16C128G",
+				}, false),
+				Default: "1C2G",
 			},
 			"storage": {
-				Type:     schema.TypeInt,
-				Required: true,
+				Type:         schema.TypeInt,
+				Optional:     true,
+				ValidateFunc: validation.IntBetween(5, 2000),
+				Default:      5,
 			},
 			"vpc_id": {
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
 			},
 			"vnet_id": {
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
 			},
-			"db_version": {
+			"instance_account": {
 				Type:     schema.TypeString,
 				Optional: true,
+				Default:  "root",
+				ForceNew: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"root",
+				}, false),
+			},
+			"instance_password": {
+				Type:      schema.TypeString,
+				Required:  true,
+				Sensitive: true,
 			},
 			"pay_type": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Computed: true,
+				Default:  "hourlyInstantSettlement",
+				ValidateFunc: validation.StringInSlice([]string{
+					"byMonth",
+					"byDay",
+					"hourlyInstantSettlement",
+				}, false),
+				ForceNew: true,
 			},
 			"duration": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:             schema.TypeString,
+				Optional:         true,
+				DiffSuppressFunc: durationSchemaDiffSuppressFunc("pay_type", "byMonth"),
+				ForceNew:         true,
 			},
 			"iam_project_id": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Computed: true,
+				Default:  "0",
+			},
+			"node_num": {
+				Type:     schema.TypeInt,
+				Optional: true,
+				Default:  3,
+				ValidateFunc: validation.IntInSlice([]int{
+					3, 5, 7,
+				}),
 			},
 			"availability_zone": {
+				Type:             schema.TypeString,
+				Required:         true,
+				ForceNew:         true,
+				ValidateFunc:     stringSplitSchemaValidateFunc(","),
+				DiffSuppressFunc: stringSplitDiffSuppressFunc(","),
+			},
+			"cidrs": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				ValidateFunc:     stringSplitSchemaValidateFunc(","),
+				DiffSuppressFunc: stringSplitDiffSuppressFunc(","),
+			},
+			"network_type": {
 				Type:     schema.TypeString,
-				Required: true,
+				Optional: true,
+				Default:  "VPC",
+				ForceNew: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"VPC",
+				}, false),
 			},
 			"user_id": {
 				Type:     schema.TypeString,
@@ -114,10 +170,6 @@ func resourceKsyunMongodbInstance() *schema.Resource {
 			},
 			"port": {
 				Type:     schema.TypeInt,
-				Computed: true,
-			},
-			"network_type": {
-				Type:     schema.TypeString,
 				Computed: true,
 			},
 			"timing_switch": {
@@ -168,343 +220,41 @@ func resourceKsyunMongodbInstance() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"area": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-			"nodes": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"node_id": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"name": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"role": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"ip": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"port": {
-							Type:     schema.TypeInt,
-							Computed: true,
-						},
-						"status": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-					},
-				},
-			},
 		},
 	}
 }
 
-func resourceMongodbInstanceCreate(d *schema.ResourceData, meta interface{}) error {
-
-	createReq := make(map[string]interface{})
-	creates := []string{
-		"name",
-		"instance_account",
-		"instance_password",
-		"instance_class",
-		"storage",
-		"node_num",
-		"vpc_id",
-		"vnet_id",
-		"db_version",
-		"pay_type",
-		"duration",
-		"iam_project_id",
-		"availability_zone",
-	}
-	for _, v := range creates {
-		if v1, ok := d.GetOk(v); ok && v != "availability_zone" {
-			createReq[Downline2Hump(v)] = fmt.Sprintf("%v", v1)
-		}
-	}
-	if v, ok := d.GetOk("availability_zone"); ok {
-		azs := strings.Split(v.(string), ",")
-		if len(azs) > 1 {
-			return fmt.Errorf("error on creating instance: %s", " not support multiple availableZone")
-		}
-		for i, az := range azs {
-			createReq[fmt.Sprintf("AvailabilityZone.%v", i+1)] = az
-		}
-	}
-	logger.Debug(logger.ReqFormat, "CreateMongoDBInstance", createReq)
-
-	conn := meta.(*KsyunClient).mongodbconn
-	resp, err := conn.CreateMongoDBInstance(&createReq)
+func resourceMongodbInstanceCreate(d *schema.ResourceData, meta interface{}) (err error) {
+	err = createMongodbInstanceCommon(d,meta,resourceKsyunMongodbInstance())
 	if err != nil {
-		return fmt.Errorf("error on creating instance: %s", err)
+		return err
 	}
-	logger.Debug(logger.RespFormat, "CreateMongoDBInstance", createReq, *resp)
-
-	if resp != nil {
-		d.SetId((*resp)["MongoDBInstanceResult"].(map[string]interface{})["InstanceId"].(string))
-	}
-
-	stateConf := &resource.StateChangeConf{
-		Pending:    []string{"creating"},
-		Target:     []string{"running"},
-		Refresh:    mongodbInstanceStateRefreshForCreateFunc(conn, d.Id(), []string{"creating", "running"}),
-		Timeout:    d.Timeout(schema.TimeoutCreate),
-		Delay:      20 * time.Second,
-		MinTimeout: 1 * time.Minute,
-	}
-	_, err = stateConf.WaitForState()
-
-	if err != nil {
-		return fmt.Errorf("error on create Instance: %s", err)
-	}
-
 	return resourceMongodbInstanceRead(d, meta)
 }
 
-func resourceMongodbInstanceDelete(d *schema.ResourceData, meta interface{}) error {
-
-	conn := meta.(*KsyunClient).mongodbconn
-
-	deleteReq := make(map[string]interface{})
-	deleteReq["InstanceId"] = d.Id()
-
-	logger.Debug(logger.ReqFormat, "DeleteMongoDBInstance", deleteReq)
-
-	// wait for order update
-	err := resource.Retry(5*time.Minute, func() *resource.RetryError {
-		_, err := conn.DeleteMongoDBInstance(&deleteReq)
-		if err != nil {
-			return resource.RetryableError(errors.New(""))
-		} else {
-			return nil
-		}
-	})
-
-	if err != nil {
-		return fmt.Errorf("error on deleting instance %q, %s", d.Id(), err)
-	}
-
+func resourceMongodbInstanceDelete(d *schema.ResourceData, meta interface{}) (err error) {
 	return resource.Retry(20*time.Minute, func() *resource.RetryError {
-
-		queryReq := make(map[string]interface{})
-		queryReq["InstanceId"] = d.Id()
-
-		logger.Debug(logger.ReqFormat, "DescribeMongoDBInstance", queryReq)
-		resp, err := conn.DescribeMongoDBInstance(&queryReq)
-		logger.Debug(logger.RespFormat, "DescribeMongoDBInstance", queryReq, resp)
-
-		if err != nil {
-			if strings.Contains(err.Error(), "InstanceNotFound") {
+		err = removeMongodbInstance(d, meta)
+		if err == nil {
+			return nil
+		} else {
+			_, err = readMongodbInstance(d, meta, "")
+			if err != nil && canNotFoundMongodbError(err) {
 				return nil
-			} else {
-				return resource.NonRetryableError(err)
 			}
 		}
-
 		return resource.RetryableError(errors.New("deleting"))
 	})
 }
 
-func resourceMongodbInstanceUpdate(d *schema.ResourceData, meta interface{}) error {
-
-	d.Partial(true)
-	defer d.Partial(false)
-	conn := meta.(*KsyunClient).mongodbconn
-	// rename
-	if d.HasChange("name") {
-		d.SetPartial("name")
-		v, ok := d.GetOk("name")
-		if !ok {
-			return fmt.Errorf("cann't change name to empty string")
-		}
-		rename := make(map[string]interface{})
-		rename["InstanceId"] = d.Id()
-		rename["Name"] = v.(string)
-		logger.Debug(logger.ReqFormat, "RenameMongoDBInstance", rename)
-		resp, err := conn.RenameMongoDBInstance(&rename)
-		if err != nil {
-			return fmt.Errorf("error on rename instance %q, %s", d.Id(), err)
-		}
-		logger.Debug(logger.RespFormat, "RenameMongoDBInstance", rename, *resp)
+func resourceMongodbInstanceUpdate(d *schema.ResourceData, meta interface{}) (err error) {
+	err = modifyMongodbInstanceCommon(d,meta,resourceKsyunMongodbInstance())
+	if err != nil {
+		return err
 	}
-	//resize
-	if d.HasChange("node_num") {
-		d.SetPartial("node_num")
-		o, n := d.GetChange("node_num")
-		if n.(int) <= o.(int) {
-			return fmt.Errorf("only supports add node")
-		}
-		updateReq := make(map[string]interface{})
-		updateReq["InstanceId"] = d.Id()
-		updateReq["NodeNum"] = fmt.Sprintf("%v", n)
-		logger.Debug(logger.ReqFormat, "AddSecondaryInstance", updateReq)
-
-		conn := meta.(*KsyunClient).mongodbconn
-		resp, err := conn.AddSecondaryInstance(&updateReq)
-		if err != nil {
-			return fmt.Errorf("error on add instance node: %s", err)
-		}
-		logger.Debug(logger.RespFormat, "AddSecondaryInstance", updateReq, *resp)
-
-		stateConf := &resource.StateChangeConf{
-			Pending:    []string{"resizing"},
-			Target:     []string{"running"},
-			Refresh:    mongodbInstanceStateRefreshForOperateFunc(conn, d.Id(), []string{"resizing", "running"}),
-			Timeout:    d.Timeout(schema.TimeoutCreate),
-			Delay:      20 * time.Second,
-			MinTimeout: 1 * time.Minute,
-		}
-		_, err = stateConf.WaitForState()
-		if err != nil {
-			return fmt.Errorf("error on add Instance node: %s", err)
-		}
-	}
-
 	return resourceMongodbInstanceRead(d, meta)
 }
 
-func resourceMongodbInstanceRead(d *schema.ResourceData, meta interface{}) error {
-	conn := meta.(*KsyunClient).mongodbconn
-
-	readReq := make(map[string]interface{})
-	readReq["InstanceId"] = d.Id()
-
-	logger.Debug(logger.ReqFormat, "DescribeMongoDBInstance", readReq)
-	resp, err := conn.DescribeMongoDBInstance(&readReq)
-	if err != nil {
-		return fmt.Errorf("error on reading instance %q, %s", d.Id(), err)
-	}
-	logger.Debug(logger.RespFormat, "DescribeMongoDBInstance", readReq, *resp)
-	item, ok := (*resp)["MongoDBInstanceResult"].(map[string]interface{})
-
-	if !ok {
-		return nil
-	}
-	result := make(map[string]interface{})
-	for k, v := range item {
-		if mongodbInstanceKeys[k] {
-			if k == "IP" {
-				result["ip"] = v
-			} else {
-				result[Hump2Downline(k)] = v
-			}
-		}
-	}
-
-	for k, v := range result {
-		if err := d.Set(k, v); err != nil {
-			return fmt.Errorf("error set data %v :%v", v, err)
-		}
-	}
-
-	return mongodbInstanceNodeRead(d, meta)
-}
-
-func mongodbInstanceStateRefreshForCreateFunc(client *mongodb.Mongodb, instanceId string, target []string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-
-		queryReq := map[string]interface{}{"InstanceId": instanceId}
-		logger.Debug(logger.ReqFormat, "DescribeMongoDBInstance", queryReq)
-
-		resp, err := client.DescribeMongoDBInstance(&queryReq)
-		if err != nil {
-			return nil, "", err
-		}
-		logger.Debug(logger.RespFormat, "DescribeMongoDBInstance", queryReq, *resp)
-
-		item, ok := (*resp)["MongoDBInstanceResult"].(map[string]interface{})
-
-		if !ok {
-			return nil, "", fmt.Errorf("no instance information was queried. InstanceId:%s", instanceId)
-		}
-		status := item["Status"].(string)
-		if status == "error" {
-			return nil, "", fmt.Errorf("instance create error, status:%v", status)
-		}
-
-		for k, v := range target {
-			if v == status {
-				return resp, status, nil
-			}
-			if k == len(target)-1 {
-				status = "creating"
-			}
-		}
-		return resp, status, nil
-	}
-}
-
-func mongodbInstanceStateRefreshForOperateFunc(client *mongodb.Mongodb, instanceId string, target []string) resource.StateRefreshFunc {
-	return func() (interface{}, string, error) {
-
-		queryReq := map[string]interface{}{"InstanceId": instanceId}
-		logger.Debug(logger.ReqFormat, "DescribeMongoDBInstance", queryReq)
-
-		resp, err := client.DescribeMongoDBInstance(&queryReq)
-		if err != nil {
-			return nil, "", err
-		}
-		logger.Debug(logger.RespFormat, "DescribeMongoDBInstance", queryReq, *resp)
-
-		item, ok := (*resp)["MongoDBInstanceResult"].(map[string]interface{})
-
-		if !ok {
-			return nil, "", fmt.Errorf("no instance information was queried. InstanceId:%s", instanceId)
-		}
-		status := item["Status"].(string)
-		if status == "error" {
-			return nil, "", fmt.Errorf("instance create error, status:%v", status)
-		}
-
-		for k, v := range target {
-			if v == status {
-				return resp, status, nil
-			}
-			if k == len(target)-1 {
-				status = "resizing"
-			}
-		}
-		return resp, status, nil
-	}
-}
-
-func mongodbInstanceNodeRead(d *schema.ResourceData, meta interface{}) error {
-	conn := meta.(*KsyunClient).mongodbconn
-
-	readReq := make(map[string]interface{})
-	readReq["InstanceId"] = d.Id()
-
-	logger.Debug(logger.ReqFormat, "DescribeMongoDBInstanceNode", readReq)
-	resp, err := conn.DescribeMongoDBInstanceNode(&readReq)
-	if err != nil {
-		return fmt.Errorf("error on reading instance node %q, %s", d.Id(), err)
-	}
-	logger.Debug(logger.RespFormat, "DescribeMongoDBInstanceNode", readReq, *resp)
-	itemSet, ok := (*resp)["MongoDBInstanceNodeResult"].([]interface{})
-
-	if !ok || len(itemSet) == 0 {
-		logger.Info("instance node result size : 0")
-		return nil
-	}
-
-	nodes := GetSubSliceDByRep(itemSet, mongodbInstanceNodeKeys)
-	for _, node := range nodes {
-		node["ip"] = node["i_p"]
-		delete(node, "i_p")
-	}
-
-	if err := d.Set("nodes", nodes); err != nil {
-		return fmt.Errorf("error set data %v :%v", nodes, err)
-	}
-
-	return nil
+func resourceMongodbInstanceRead(d *schema.ResourceData, meta interface{}) (err error) {
+	return readMongodbInstanceCommon(d,meta,resourceKsyunMongodbInstance())
 }

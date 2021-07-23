@@ -47,9 +47,9 @@ func resourceKsyunRabbitmqSecurityRule() *schema.Resource {
 					if r {
 						return r
 					}
-					return rabbitmqSplitDiffSuppressFunc(",")(k, old, new, d)
+					return stringSplitDiffSuppressFunc(",")(k, old, new, d)
 				},
-				ValidateFunc:  rabbitmqSplitSchemaValidateFunc(","),
+				ValidateFunc:  stringSplitSchemaValidateFunc(","),
 				Deprecated:    "`cidrs` is deprecated use resourceKsyunRabbitmq.cidrs instead ",
 				ConflictsWith: []string{"cidr"},
 			},

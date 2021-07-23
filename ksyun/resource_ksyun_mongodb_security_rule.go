@@ -2,9 +2,9 @@ package ksyun
 
 import (
 	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/terraform-providers/terraform-provider-ksyun/logger"
-	"strings"
+	"time"
 )
 
 func resourceKsyunMongodbSecurityRule() *schema.Resource {
@@ -14,178 +14,125 @@ func resourceKsyunMongodbSecurityRule() *schema.Resource {
 		Update: resourceMongodbSecurityRuleUpdate,
 		Read:   resourceMongodbSecurityRuleRead,
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			State: func(d *schema.ResourceData, i interface{}) ([]*schema.ResourceData, error) {
+				return conflictResourceImport("instance_id", "cidr", "cidrs", d)
+			},
 		},
+		CustomizeDiff: conflictResourceCustomizeDiffFunc("cidr","cidrs"),
 		Schema: map[string]*schema.Schema{
 			"instance_id": {
 				Type:     schema.TypeString,
 				Required: true,
 			},
-			"cidrs": {
-				Type:     schema.TypeString,
-				Required: true,
+			"cidr": {
+				Type:          schema.TypeString,
+				Optional:      true,
+				ConflictsWith: []string{"cidrs"},
+				ForceNew:      true,
 			},
-			"rules": {
-				Type:     schema.TypeList,
-				Computed: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"to_port": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"from_port": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"cidr": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"protocol": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"id": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-					},
-				},
+			"cidrs": {
+				Type:          schema.TypeString,
+				Optional:      true,
+				Deprecated:    "`cidrs` is deprecated use resourceKsyunMongodbInstance.cidrs or resourceKsyunMongodbShardInstance instead ",
+				ConflictsWith: []string{"cidr"},
+				ValidateFunc:  stringSplitSchemaValidateFunc(","),
+				DiffSuppressFunc: stringSplitDiffSuppressFunc(","),
 			},
 		},
 	}
 }
 
-func resourceMongodbSecurityRuleCreate(d *schema.ResourceData, meta interface{}) error {
-
-	cidrs := d.Get("cidrs")
-	if cidrs.(string) == "" {
-		return fmt.Errorf("error on set instance security rule: cidrs is empty")
+func resourceMongodbSecurityRuleCreate(d *schema.ResourceData, meta interface{}) (err error) {
+	var (
+		use string
+		addV4 string
+		addV6 string
+	)
+	use, err = checkConflictOnCreate("cidr", "cidrs", d)
+	if err != nil {
+		return err
 	}
-	createReq := make(map[string]interface{})
-	createReq["InstanceId"] = d.Get("instance_id")
-	createReq["cidrs"] = cidrs
-
-	conn := meta.(*KsyunClient).mongodbconn
-	logger.Debug(logger.ReqFormat, "AddSecurityGroupRule", createReq)
-	resp, err := conn.AddSecurityGroupRule(&createReq)
+	err,addV4,_,addV6,_ = checkMongodbSecurityGroupRulesChange(d,meta,use,d.Get("instance_id").(string))
 	if err != nil {
 		return fmt.Errorf("error on set instance security rule: %s", err)
 	}
-	logger.Debug(logger.RespFormat, "AddSecurityGroupRule", createReq, *resp)
-
-	d.SetId(createReq["InstanceId"].(string))
-
+	err = addMongodbSecurityGroupRules(d,meta,d.Get("instance_id").(string),addV4,addV6)
+	if err != nil {
+		return fmt.Errorf("error on set instance security rule: %s", err)
+	}
+	conflictResourceSetId(use, "instance_id", "cidr", "cidrs", d)
 	return resourceMongodbSecurityRuleRead(d, meta)
 }
 
 func resourceMongodbSecurityRuleDelete(d *schema.ResourceData, meta interface{}) error {
-
-	conn := meta.(*KsyunClient).mongodbconn
-
-	rules := d.Get("rules").([]interface{})
-	var cidrs []string
-	for _, rule := range rules {
-		r := rule.(map[string]interface{})
-		cidrs = append(cidrs, r["cidr"].(string))
+	var (
+		err  error
+		delV4 string
+		delV6 string
+	)
+	if checkMultipleExist("cidrs", d) {
+		err,delV4,delV6 = checkMongodbSecurityGroupRulesDel(d,meta,d.Get("instance_id").(string),d.Get("cidrs").(string))
+	} else {
+		err,delV4,delV6 = checkMongodbSecurityGroupRulesDel(d,meta,d.Get("instance_id").(string),d.Get("cidr").(string))
 	}
 
-	deleteReq := make(map[string]interface{})
-	deleteReq["InstanceId"] = d.Id()
-	deleteReq["cidrs"] = strings.Join(cidrs, ",")
-	logger.Debug(logger.ReqFormat, "DeleteSecurityGroupRules", deleteReq)
-	resp, err := conn.DeleteSecurityGroupRules(&deleteReq)
-	if err != nil {
-		return fmt.Errorf("error on delete instance security rule: %s", err)
-	}
-	logger.Debug(logger.RespFormat, "DeleteSecurityGroupRules", deleteReq, *resp)
-
-	return nil
+	return resource.Retry(25*time.Minute, func() *resource.RetryError {
+		err = delMongodbSecurityGroupRules(d,meta,d.Get("instance_id").(string),delV4,delV6)
+		if err == nil {
+			return nil
+		}
+		if err != nil && inUseError(err) {
+			return resource.RetryableError(err)
+		}
+		return nil
+	})
 }
 
-func resourceMongodbSecurityRuleUpdate(d *schema.ResourceData, meta interface{}) error {
-
-	d.Partial(true)
-	defer d.Partial(false)
-
-	conn := meta.(*KsyunClient).mongodbconn
-
-	if d.HasChange("cidrs") {
-		d.SetPartial("cidrs")
-		var addRules, deleteRules []string
-
-		oldCidr, newCidr := d.GetChange("cidrs")
-		if newCidr.(string) == "" {
-			rules := d.Get("rules").([]interface{})
-			for _, rule := range rules {
-				r := rule.(map[string]interface{})
-				deleteRules = append(deleteRules, r["cidr"].(string))
-			}
-		} else if oldCidr.(string) == "" {
-			addRules = strings.Split(newCidr.(string), ",")
-		} else {
-			oldCidrs := strings.Split(oldCidr.(string), ",")
-			newCidrs := strings.Split(newCidr.(string), ",")
-
-			for _, oldRule := range oldCidrs {
-				if !strings.Contains(newCidr.(string), oldRule) {
-					deleteRules = append(deleteRules, oldRule)
-				}
-			}
-
-			for _, newRule := range newCidrs {
-				if !strings.Contains(oldCidr.(string), newRule) {
-					addRules = append(addRules, newRule)
-				}
-			}
-		}
-		if len(addRules) > 0 {
-			createReq := make(map[string]interface{})
-			createReq["InstanceId"] = d.Id()
-			createReq["cidrs"] = strings.Join(addRules, ",")
-			logger.Debug(logger.ReqFormat, "AddSecurityGroupRule", createReq)
-			resp, err := conn.AddSecurityGroupRule(&createReq)
-			if err != nil {
-				return fmt.Errorf("error on add instance security rule: %s", err)
-			}
-			logger.Debug(logger.RespFormat, "AddSecurityGroupRule", createReq, *resp)
-		}
-
-		if len(deleteRules) > 0 {
-			deleteReq := make(map[string]interface{})
-			deleteReq["InstanceId"] = d.Id()
-			deleteReq["cidrs"] = strings.Join(deleteRules, ",")
-			logger.Debug(logger.ReqFormat, "DeleteSecurityGroupRules", deleteReq)
-			resp, err := conn.DeleteSecurityGroupRules(&deleteReq)
-			if err != nil {
-				return fmt.Errorf("error on delete instance security rule: %s", err)
-			}
-			logger.Debug(logger.RespFormat, "DeleteSecurityGroupRules", deleteReq, *resp)
-		}
+func resourceMongodbSecurityRuleUpdate(d *schema.ResourceData, meta interface{}) (err error) {
+	var (
+		addV4 string
+		delV4 string
+		addV6 string
+		delV6 string
+	)
+	err,addV4,delV4,addV6,delV6 = checkMongodbSecurityGroupRulesChange(d,meta,"cidrs",d.Get("instance_id").(string))
+	if err != nil {
+		return fmt.Errorf("error on update instance security rules: %s", err)
 	}
-
+	err = addMongodbSecurityGroupRules(d,meta,d.Get("instance_id").(string),addV4,addV6)
+	if err != nil {
+		return fmt.Errorf("error on set instance security rule: %s", err)
+	}
+	err = delMongodbSecurityGroupRules(d,meta,d.Get("instance_id").(string),delV4,delV6)
+	if err != nil {
+		return fmt.Errorf("error on set instance security rule: %s", err)
+	}
 	return resourceMongodbSecurityRuleRead(d, meta)
 }
 
-func resourceMongodbSecurityRuleRead(d *schema.ResourceData, meta interface{}) error {
+func resourceMongodbSecurityRuleRead(d *schema.ResourceData, meta interface{}) (err error) {
 
-	conn := meta.(*KsyunClient).mongodbconn
-	readReq := make(map[string]interface{})
-	readReq["InstanceId"] = d.Id()
-
-	logger.Debug(logger.ReqFormat, "ListSecurityGroupRules", readReq)
-	resp, err := conn.ListSecurityGroupRules(&readReq)
-	if err != nil {
-		return fmt.Errorf("error on reading instance security rule %q, %s", d.Id(), err)
+	var (
+		cidrs string
+	)
+	if checkMultipleExist("cidrs", d) {
+		cidrs,err = readMongodbSecurityGroupCidrs(d,meta,"cidrs",d.Get("instance_id").(string))
+		if err != nil {
+			return fmt.Errorf("error on read instance security rule: %s", err)
+		}
+		if cidrs != ""{
+			err = d.Set("cidrs",cidrs)
+		}
+	}else{
+		cidrs,err = readMongodbSecurityGroupCidrs(d,meta,"cidr",d.Get("instance_id").(string))
+		if err != nil {
+			return fmt.Errorf("error on read instance security rule: %s", err)
+		}
+		if cidrs == "" {
+			return fmt.Errorf("can not read cidr [%s] from mongodb instance [%s]", d.Get("cidr"),
+				d.Get("instance_id").(string))
+		}
+		err = d.Set("cidr", cidrs)
 	}
-	logger.Debug(logger.RespFormat, "ListSecurityGroupRules", readReq, *resp)
-
-	rules := (*resp)["MongoDBSecurityGroupRule"].([]interface{})
-
-	if err := d.Set("rules", rules); err != nil {
-		return fmt.Errorf("error set data:%v", err)
-	}
-
-	return nil
+	return err
 }

@@ -81,6 +81,51 @@ func conflictResourceDiffSuppressForMultiple(single string, multiple string, d *
 	return false
 }
 
+func conflictResourceCustomizeDiffFunc(single string,multiple string)schema.CustomizeDiffFunc{
+	return func(diff *schema.ResourceDiff, i interface{}) (err error) {
+		valid := true
+		if diff.HasChange(single){
+			if diff.Id() != "" && strings.Contains(diff.Id(), ":"+multiple) {
+				valid = false
+				goto valid
+			}
+			if v, ok := diff.Get(multiple).(*schema.Set); ok && len(v.List()) > 0 {
+				valid = false
+				goto valid
+			}
+			if v, ok := diff.Get(multiple).(string); ok && v != "" {
+				valid = false
+				goto valid
+			}
+		}
+		if diff.HasChange(multiple){
+			if diff.Id() != "" && !strings.Contains(diff.Id(), ":"+multiple) {
+				valid = false
+				goto valid
+			}
+			if v, ok := diff.Get(single).(string); ok && v != "" {
+				valid = false
+				goto valid
+			}
+		}
+		valid: if !valid {
+			return fmt.Errorf("%s and %s is conflict",single,multiple)
+		}
+
+		err = checkConflictOnDiff(single,multiple,diff)
+		return err
+	}
+}
+
+func checkConflictOnDiff(single string, multiple string, diff *schema.ResourceDiff) (err error) {
+    n1 := diff.Get(single)
+	n2 := diff.Get(multiple)
+	if n1 == "" && n2 == ""   {
+		return fmt.Errorf("must set %s or set %s ", single, multiple)
+	}
+	return err
+}
+
 func checkConflictOnCreate(key string, conflictKey string, d *schema.ResourceData) (use string, err error) {
 	_, existKey := d.GetOk(key)
 	_, existConflictKey := d.GetOk(conflictKey)
