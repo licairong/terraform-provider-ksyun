@@ -105,8 +105,8 @@ func resourceKsyunRabbitmq() *schema.Resource {
 			"enable_plugins": {
 				Type:             schema.TypeString,
 				Optional:         true,
-				ValidateFunc:     rabbitmqSplitSchemaValidateFunc(","),
-				DiffSuppressFunc: rabbitmqSplitDiffSuppressFunc(","),
+				ValidateFunc:     stringSplitSchemaValidateFunc(","),
+				DiffSuppressFunc: stringSplitDiffSuppressFunc(","),
 			},
 			"force_restart": {
 				Type:     schema.TypeBool,
@@ -132,8 +132,8 @@ func resourceKsyunRabbitmq() *schema.Resource {
 			"cidrs": {
 				Type:             schema.TypeString,
 				Optional:         true,
-				DiffSuppressFunc: rabbitmqSplitDiffSuppressFunc(","),
-				ValidateFunc:     rabbitmqSplitSchemaValidateFunc(","),
+				DiffSuppressFunc: stringSplitDiffSuppressFunc(","),
+				ValidateFunc:     stringSplitSchemaValidateFunc(","),
 			},
 			"project_name": {
 				Type:     schema.TypeString,
@@ -401,13 +401,15 @@ func resourceRabbitmqInstanceUpdate(d *schema.ResourceData, meta interface{}) (e
 
 func resourceRabbitmqInstanceRead(d *schema.ResourceData, meta interface{}) error {
 	var (
-		item      map[string]interface{}
-		ok        bool
-		err       error
-		plugins   []interface{}
-		pluginStr string
-		rules     []interface{}
-		ruleStr   string
+		item           map[string]interface{}
+		ok             bool
+		err            error
+		plugins        []interface{}
+		pluginStr      string
+		rules          []interface{}
+		ruleStr        string
+		currentPlugins []string
+		currentRules   []string
 	)
 
 	item, err = readRabbitmqInstance(d, meta, "")
@@ -424,15 +426,12 @@ func resourceRabbitmqInstanceRead(d *schema.ResourceData, meta interface{}) erro
 	}
 	for _, plugin := range plugins {
 		if int64(plugin.(map[string]interface{})["PluginStatus"].(float64)) == 1 {
-			p := plugin.(map[string]interface{})["PluginName"].(string)
-			if strings.Contains(d.Get("enable_plugins").(string), p) {
-				pluginStr = pluginStr + p + ","
-			}
-
+			currentPlugins = append(currentPlugins,plugin.(map[string]interface{})["PluginName"].(string))
 		}
 	}
+	pluginStr = stringSplitRead(",","enable_plugins",currentPlugins,d)
 	if pluginStr != "" {
-		item["EnablePlugins"] = pluginStr[0 : len(pluginStr)-1]
+		item["EnablePlugins"] = pluginStr
 	}
 
 	extra := make(map[string]SdkResponseMapping)
@@ -459,12 +458,11 @@ func resourceRabbitmqInstanceRead(d *schema.ResourceData, meta interface{}) erro
 	}
 	for _, rule := range rules {
 		r := rule.(map[string]interface{})["Cidr"].(string)
-		if strings.Contains(d.Get("cidrs").(string), r) {
-			ruleStr = ruleStr + r + ","
-		}
+		currentRules = append(currentRules,r)
 	}
+	ruleStr = stringSplitRead(",","cidrs",currentRules,d)
 	if ruleStr != "" {
-		item["Cidrs"] = ruleStr[0 : len(ruleStr)-1]
+		item["Cidrs"] = ruleStr
 	}
 	SdkResponseAutoResourceData(d, resourceKsyunRabbitmq(), item, extra)
 	return d.Set("force_restart", d.Get("force_restart"))

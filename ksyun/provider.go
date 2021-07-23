@@ -107,6 +107,7 @@ func Provider() terraform.ResourceProvider {
 			/*	"ksyun_epc":                       resourceKsyunEpc(),*/
 			"ksyun_mongodb_instance":           resourceKsyunMongodbInstance(),
 			"ksyun_mongodb_shard_instance":     resourceKsyunMongodbShardInstance(),
+			"ksyun_mongodb_shard_instance_node":resourceKsyunMongodbShardInstanceNode(),
 			"ksyun_mongodb_security_rule":      resourceKsyunMongodbSecurityRule(),
 			"ksyun_volume":                     resourceKsyunVolume(),
 			"ksyun_volume_attach":              resourceKsyunVolumeAttach(),
