@@ -21,11 +21,11 @@ func resourceKsyunScalingGroup() *schema.Resource {
 			State: schema.ImportStatePassthrough,
 		},
 		CustomizeDiff: func(diff *schema.ResourceDiff, i interface{}) (err error) {
-			if diff.HasChange("security_group_id") && diff.Get("security_group_id_set") != nil {
-				err = fmt.Errorf("security_group_id and security_group_set conflicts")
+			if diff.HasChange("security_group_id") {
+				err = diff.SetNewComputed("security_group_id_set")
 			}
-			if diff.HasChange("security_group_id_set") && diff.Get("security_group_id") != "" {
-				err = fmt.Errorf("security_group_id and security_group_set conflicts")
+			if diff.HasChange("security_group_id_set") {
+				err = diff.SetNewComputed("security_group_id")
 			}
 			return err
 		},
