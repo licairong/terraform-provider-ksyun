@@ -15,6 +15,25 @@ func resourceKsyunScalingInstance() *schema.Resource {
 		Read:   resourceKsyunScalingInstanceRead,
 		Delete: resourceKsyunScalingInstanceDelete,
 		Update: resourceKsyunScalingInstanceUpdate,
+		Importer: &schema.ResourceImporter{
+			State: func(d *schema.ResourceData, i interface{}) ([]*schema.ResourceData, error) {
+				var err error
+				items := strings.Split(d.Id(), ":")
+				if len(items) != 2 {
+					return nil, fmt.Errorf("id must split with %s and size %v", ":", 2)
+				}
+				err = d.Set("scaling_group_id", items[0])
+				if err != nil {
+					return nil, err
+				}
+				err = d.Set("scaling_instance_id", items[1])
+				if err != nil {
+					return nil, err
+				}
+				d.SetId(items[1] + ":" + items[0])
+				return []*schema.ResourceData{d}, err
+			},
+		},
 		Schema: map[string]*schema.Schema{
 			"scaling_group_id": {
 				Type:     schema.TypeString,

@@ -17,6 +17,18 @@ func resourceKsyunScalingGroup() *schema.Resource {
 		Read:   resourceKsyunScalingGroupRead,
 		Delete: resourceKsyunScalingGroupDelete,
 		Update: resourceKsyunScalingGroupUpdate,
+		Importer: &schema.ResourceImporter{
+			State: schema.ImportStatePassthrough,
+		},
+		CustomizeDiff: func(diff *schema.ResourceDiff, i interface{}) (err error) {
+			if diff.HasChange("security_group_id") && diff.Get("security_group_id_set") != nil {
+				err = fmt.Errorf("security_group_id and security_group_set conflicts")
+			}
+			if diff.HasChange("security_group_id_set") && diff.Get("security_group_id") != "" {
+				err = fmt.Errorf("security_group_id and security_group_set conflicts")
+			}
+			return err
+		},
 		Schema: map[string]*schema.Schema{
 
 			"scaling_group_name": {
@@ -73,9 +85,10 @@ func resourceKsyunScalingGroup() *schema.Resource {
 			},
 
 			"security_group_id": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
+				Type:          schema.TypeString,
+				Optional:      true,
+				Computed:      true,
+				ConflictsWith: []string{"security_group_id_set"},
 			},
 
 			"security_group_id_set": {
@@ -86,7 +99,8 @@ func resourceKsyunScalingGroup() *schema.Resource {
 				Elem: &schema.Schema{
 					Type: schema.TypeString,
 				},
-				Set: schema.HashString,
+				Set:           schema.HashString,
+				ConflictsWith: []string{"security_group_id"},
 			},
 
 			"status": {
@@ -360,6 +374,7 @@ func resourceKsyunScalingGroupRead(d *schema.ResourceData, meta interface{}) err
 			d.SetId("")
 			return nil
 		}
+
 		SdkResponseAutoResourceData(d, resourceKsyunScalingGroup(), items[0], nil)
 	}
 	return nil
