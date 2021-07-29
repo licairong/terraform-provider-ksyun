@@ -15,6 +15,9 @@ func resourceKsyunScalingConfiguration() *schema.Resource {
 		Read:   resourceKsyunScalingConfigurationRead,
 		Delete: resourceKsyunScalingConfigurationDelete,
 		Update: resourceKsyunScalingConfigurationUpdate,
+		Importer: &schema.ResourceImporter{
+			State: schema.ImportStatePassthrough,
+		},
 		Schema: map[string]*schema.Schema{
 
 			"scaling_configuration_name": {
@@ -31,10 +34,12 @@ func resourceKsyunScalingConfiguration() *schema.Resource {
 			},
 
 			"instance_type": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Default:  "I1.1A",
-				ForceNew: false,
+				Type:             schema.TypeString,
+				Optional:         true,
+				Default:          "I1.1A",
+				ForceNew:         false,
+				ValidateFunc:     stringSplitSchemaValidateFunc(","),
+				DiffSuppressFunc: stringSplitDiffSuppressFunc(","),
 			},
 
 			"password": {
@@ -208,6 +213,7 @@ func resourceKsyunScalingConfigurationExtra(d *schema.ResourceData, forceGet boo
 	var r map[string]SdkReqTransform
 
 	r = map[string]SdkReqTransform{
+		"instance_type":    {Type: TransformWithN},
 		"key_id":           {Type: TransformWithN},
 		"system_disk_type": {mapping: "SystemDisk.DiskType"},
 		"system_disk_size": {mapping: "SystemDisk.DiskSize"},
@@ -293,6 +299,7 @@ func resourceKsyunScalingConfigurationRead(d *schema.ResourceData, meta interfac
 			d.SetId("")
 			return nil
 		}
+		delete(items[0].(map[string]interface{}), "InstanceType")
 		SdkResponseAutoResourceData(d, resourceKsyunScalingConfiguration(), items[0], scalingConfigurationSpecialMapping())
 	}
 	return nil

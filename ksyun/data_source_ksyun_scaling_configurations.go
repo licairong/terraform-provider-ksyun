@@ -294,6 +294,30 @@ func scalingConfigurationSpecialMapping() map[string]SdkResponseMapping {
 			return result
 		},
 	}
+	specialMapping["InstanceTypeSet"] = SdkResponseMapping{
+		Field: "instance_type",
+		FieldRespFunc: func(i interface{}) interface{} {
+			var result string
+			for _, v := range i.([]interface{}) {
+				result = result + v.(string) + ","
+			}
+			if len(result) > 0 {
+				result = result[0 : len(result)-1]
+			}
+			return result
+		},
+	}
+	specialMapping["KeyIds"] = SdkResponseMapping{
+		Field: "key_id",
+		FieldRespFunc: func(i interface{}) interface{} {
+			var (
+				value []string
+			)
+			_ = json.Unmarshal([]byte(i.(string)), &value)
+			return value
+
+		},
+	}
 	return specialMapping
 }
 
@@ -306,6 +330,7 @@ func dataSourceKsyunScalingConfigurationsSave(d *schema.ResourceData, result []m
 			return item["ScalingConfigurationId"].(string)
 		},
 		SliceMappingFunc: func(item map[string]interface{}) map[string]interface{} {
+			delete(item, "InstanceType")
 			return SdkResponseAutoMapping(resource, targetName, item, nil, scalingConfigurationSpecialMapping())
 		},
 		TargetName: targetName,
