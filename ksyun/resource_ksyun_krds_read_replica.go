@@ -184,25 +184,26 @@ func resourceKsyunKrdsRrCreate(d *schema.ResourceData, meta interface{}) error {
 		logger.DebugInfo("RR DBInstanceIdentifier : %v", instanceId)
 		d.SetId(instanceId)
 	}
-	stateConf := &resource.StateChangeConf{
-		Pending:    []string{tCreatingStatus},
-		Target:     []string{tActiveStatus, tFailedStatus, tDeletedStatus, tStopedStatus},
-		Timeout:    d.Timeout(schema.TimeoutCreate),
-		Delay:      10 * time.Second,
-		MinTimeout: 10 * time.Second,
-		Refresh:    mysqlInstanceStateRefresh(conn, d.Id(), []string{tCreatingStatus}),
-	}
-	_, err = stateConf.WaitForState()
-	if err != nil {
-		return fmt.Errorf("error on creating Instance(krds): %s", err)
-	}
+	//stateConf := &resource.StateChangeConf{
+	//	Pending:    []string{tCreatingStatus},
+	//	Target:     []string{tActiveStatus, tFailedStatus, tDeletedStatus, tStopedStatus},
+	//	Timeout:    d.Timeout(schema.TimeoutCreate),
+	//	Delay:      10 * time.Second,
+	//	MinTimeout: 10 * time.Second,
+	//	Refresh:    mysqlInstanceStateRefresh(conn, d.Id(), []string{tCreatingStatus}),
+	//}
+	//_, err = stateConf.WaitForState()
+	//if err != nil {
+	//	return fmt.Errorf("error on creating Instance(krds): %s", err)
+	//}
 
-	err = resourceKsyunMysqlRead(d, meta)
+	err = resourceKsyunKrdsRead(d, meta)
 	if err != nil {
 		return fmt.Errorf("error on ModifyDBParameterGroup Instance(krds): %s", err)
 	}
 
-	return modifyParameters(d, meta)
+	//return modifyParameters(d, meta)
+	return err
 }
 
 func checkBackupComplete(d *schema.ResourceData, meta interface{}) error {
@@ -245,11 +246,11 @@ func mysqlBackupStateRefresh(client *krds.Krds, instanceId string) resource.Stat
 }
 
 func resourceKsyunKrdsRrUpdate(d *schema.ResourceData, meta interface{}) error {
-	return resourceKsyunMysqlUpdate(d, meta)
+	return resourceKsyunKrdsUpdate(d, meta)
 }
 func resourceKsyunKrdsRrRead(d *schema.ResourceData, meta interface{}) error {
-	return resourceKsyunMysqlRead(d, meta)
+	return resourceKsyunKrdsRead(d, meta)
 }
 func resourceKsyunKrdsRrDelete(d *schema.ResourceData, meta interface{}) error {
-	return resourceKsyunMysqlDelete(d, meta)
+	return resourceKsyunKrdsDelete(d, meta)
 }
