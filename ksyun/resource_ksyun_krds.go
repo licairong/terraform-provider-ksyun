@@ -20,9 +20,9 @@ func resourceKsyunKrds() *schema.Resource {
 		},
 		CustomizeDiff: krdsInstanceCustomizeDiff(),
 		Timeouts: &schema.ResourceTimeout{
-			Create: schema.DefaultTimeout(60 * time.Minute),
-			Update: schema.DefaultTimeout(60 * time.Minute),
-			Delete: schema.DefaultTimeout(60 * time.Minute),
+			Create: schema.DefaultTimeout(300 * time.Minute),
+			Update: schema.DefaultTimeout(300 * time.Minute),
+			Delete: schema.DefaultTimeout(300 * time.Minute),
 		},
 		Schema: map[string]*schema.Schema{
 			"db_instance_identifier": {
@@ -35,6 +35,7 @@ func resourceKsyunKrds() *schema.Resource {
 				Required: true,
 				Description: "this value regex db.ram.d{1,3}|db.disk.d{1,5} , " +
 					"db.ram is rds random access memory size, db.disk is disk size",
+				ValidateFunc: validDbInstanceClass(),
 			},
 			"db_instance_name": {
 				Type:     schema.TypeString,
@@ -93,21 +94,25 @@ func resourceKsyunKrds() *schema.Resource {
 				ForceNew: true,
 				ValidateFunc: validation.StringInSlice([]string{
 					"DAY",
+					"YEAR_MONTH",
 				}, false),
 			},
 			"duration": {
 				Type:     schema.TypeInt,
 				Optional: true,
 				Computed: true,
-				DiffSuppressFunc: func(k, old, new string, d *schema.ResourceData) bool {
-					return true
-				},
+				DiffSuppressFunc: durationSchemaDiffSuppressFunc("bill_type", "YEAR_MONTH"),
 			},
 			"security_group_id": {
 				Type:        schema.TypeString,
 				Optional:    true,
 				Computed:    true,
 				Description: "proprietary security group id for krds",
+			},
+			"vip": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
 			},
 			"db_parameter_group_id": {
 				Type:     schema.TypeString,
@@ -169,10 +174,6 @@ func resourceKsyunKrds() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"vip": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
 			"eip_port": {
 				Type:     schema.TypeInt,
 				Computed: true,
@@ -195,7 +196,7 @@ func parameterToHash(v interface{}) int {
 }
 
 func resourceKsyunKrdsCreate(d *schema.ResourceData, meta interface{}) (err error) {
-	err = createKrdsInstance(d, meta)
+	err = createKrdsInstance(d, meta,false)
 	if err != nil {
 		return fmt.Errorf("error on creating instance , error is %e", err)
 	}
@@ -203,7 +204,7 @@ func resourceKsyunKrdsCreate(d *schema.ResourceData, meta interface{}) (err erro
 }
 
 func resourceKsyunKrdsRead(d *schema.ResourceData, meta interface{}) (err error) {
-	err = readAndSetKrdsInstance(d, meta)
+	err = readAndSetKrdsInstance(d, meta,false)
 	if err != nil {
 		return fmt.Errorf("error on reading instance , error is %s", err)
 	}
@@ -215,7 +216,7 @@ func resourceKsyunKrdsRead(d *schema.ResourceData, meta interface{}) (err error)
 }
 
 func resourceKsyunKrdsUpdate(d *schema.ResourceData, meta interface{}) (err error) {
-	err = modifyKrdsInstance(d, meta)
+	err = modifyKrdsInstance(d, meta,false)
 	if err != nil {
 		return fmt.Errorf("error on updating instance , error is %e", err)
 	}
