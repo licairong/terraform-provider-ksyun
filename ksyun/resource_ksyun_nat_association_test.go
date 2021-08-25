@@ -49,7 +49,7 @@ func testAccCheckNatAssociationExists(n string, val *map[string]interface{}) res
 		client := testAccProvider.Meta().(*KsyunClient)
 		Nat := make(map[string]interface{})
 		Nat["NatId.1"] = strings.Split(rs.Primary.ID, ":")[0]
-		projectErr := GetProjectInfo(&Nat, client)
+		projectErr := getProjectInfo(&Nat, client)
 		if projectErr != nil {
 			return projectErr
 		}
@@ -92,7 +92,7 @@ func testAccCheckNatAssociationDestroy(s *terraform.State) error {
 		Nat := make(map[string]interface{})
 		Nat["NatId.1"] = strings.Split(rs.Primary.ID, ":")[0]
 		subnetId := strings.Split(rs.Primary.ID, ":")[1]
-		projectErr := GetProjectInfo(&Nat, client)
+		projectErr := getProjectInfo(&Nat, client)
 		if projectErr != nil {
 			return projectErr
 		}

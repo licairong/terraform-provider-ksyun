@@ -110,8 +110,10 @@ func resourceRedisInstance() *schema.Resource {
 				Optional: true,
 			},
 			"security_group_id": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:             schema.TypeString,
+				Optional:         true,
+				ValidateFunc:     stringSplitSchemaValidateFunc(","),
+				DiffSuppressFunc: stringSplitDiffSuppressFunc(","),
 			},
 			"reset_all_parameters": {
 				Type:     schema.TypeBool,
@@ -241,6 +243,7 @@ func resourceRedisInstanceCreate(d *schema.ResourceData, meta interface{}) error
 	transform := map[string]SdkReqTransform{
 		"reset_all_parameters": {Ignore: true},
 		"parameters":           {Ignore: true},
+		"security_group_id":    {Ignore: true},
 		"protocol": {ValueFunc: func(d *schema.ResourceData) (interface{}, bool) {
 			v, ok := d.GetOk("protocol")
 			if ok {
@@ -277,6 +280,11 @@ func resourceRedisInstanceCreate(d *schema.ResourceData, meta interface{}) error
 		d.SetId((*resp)["Data"].(map[string]interface{})["CacheId"].(string))
 	}
 	err = checkRedisInstanceStatus(d, meta, d.Timeout(schema.TimeoutCreate), "")
+	if err != nil {
+		return fmt.Errorf("error on create Instance: %s", err)
+	}
+	//AllocateSecurityGroup
+	err = modifyRedisInstanceSg(d, meta, false)
 	if err != nil {
 		return fmt.Errorf("error on create Instance: %s", err)
 	}
@@ -357,7 +365,7 @@ func resourceRedisInstanceUpdate(d *schema.ResourceData, meta interface{}) (err 
 		return fmt.Errorf("error on update instance: %s", err)
 	}
 	//sg
-	err = modifyRedisInstanceSg(d, meta)
+	err = modifyRedisInstanceSg(d, meta, true)
 	if err != nil {
 		return fmt.Errorf("error on update instance: %s", err)
 	}
@@ -429,5 +437,5 @@ func resourceRedisInstanceRead(d *schema.ResourceData, meta interface{}) error {
 		return fmt.Errorf("error on reading instance %q, %s", d.Id(), err)
 	}
 
-	return err
+	return d.Set("reset_all_parameters", d.Get("reset_all_parameters"))
 }

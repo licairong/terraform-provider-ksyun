@@ -163,7 +163,7 @@ func resourceKsyunLbRead(d *schema.ResourceData, m interface{}) error {
 	slbconn := m.(*KsyunClient).slbconn
 	req := make(map[string]interface{})
 	req["LoadBalancerId.1"] = d.Id()
-	err := AddProjectInfo(d, &req, m.(*KsyunClient))
+	err := addProjectInfo(d, &req, m.(*KsyunClient))
 	if err != nil {
 		return fmt.Errorf("error on DescribeLoadBalancers  %q, %s", d.Id(), err)
 	}

@@ -283,7 +283,7 @@ func resourceKsyunScalingConfigurationRead(d *schema.ResourceData, meta interfac
 
 	readScalingConfiguration := make(map[string]interface{})
 	readScalingConfiguration["ScalingConfigurationId.1"] = d.Id()
-	projectErr := AddProjectInfo(d, &readScalingConfiguration, client)
+	projectErr := addProjectInfo(d, &readScalingConfiguration, client)
 	if projectErr != nil {
 		return projectErr
 	}
