@@ -142,7 +142,7 @@ func SetResourceDataByResp(d *schema.ResourceData, item interface{}, keys map[st
 	return nil
 }
 
-func AddProjectInfo(d *schema.ResourceData, req *map[string]interface{}, client *KsyunClient, key ...string) error {
+func addProjectInfo(d *schema.ResourceData, req *map[string]interface{}, client *KsyunClient, key ...string) error {
 	var project string
 	if key != nil && len(key) == 1 {
 		project = key[0]
@@ -155,7 +155,7 @@ func AddProjectInfo(d *schema.ResourceData, req *map[string]interface{}, client 
 	} else if d.HasChange(project) && !d.IsNewResource() {
 		(*req)[hump+".1"] = fmt.Sprintf("%v", d.Get(project))
 	} else {
-		return GetProjectInfo(req, client, project)
+		return getProjectInfo(req, client, project)
 	}
 	return nil
 }
@@ -167,7 +167,7 @@ func checkStringValueNotEmpty(d *schema.ResourceData, key string) (string, bool)
 	return "", false
 }
 
-func GetProjectInfo(input *map[string]interface{}, client *KsyunClient, key ...string) error {
+func getProjectInfo(input *map[string]interface{}, client *KsyunClient, key ...string) error {
 	var project string
 	if key != nil && len(key) == 1 {
 		project = key[0]

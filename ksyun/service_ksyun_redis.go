@@ -41,15 +41,53 @@ func resourceRedisInstanceParamRead(d *schema.ResourceData, meta interface{}) er
 	if len(data) == 0 {
 		return nil
 	}
+
+	readReq = make(map[string]interface{})
+	readReq["ParamVersion"] = d.Get("protocol")
+	integrationAzConf = &IntegrationRedisAzConf{
+		resourceData: d,
+		client:       meta.(*KsyunClient),
+		req:          &readReq,
+		field:        "available_zone",
+		requestFunc: func() (*map[string]interface{}, error) {
+			conn := meta.(*KsyunClient).kcsv1conn
+			return conn.DescribeCacheDefaultParameters(&readReq)
+		},
+	}
+	action = "DescribeCacheDefaultParameters"
+	logger.Debug(logger.ReqFormat, action, readReq)
+	resp, err = integrationAzConf.integrationRedisAz()
+	if err != nil {
+		return fmt.Errorf("error on reading default parameter %q, %s", d.Id(), err)
+	}
+	defaultData := (*resp)["Data"].([]interface{})
+	if len(defaultData) == 0 {
+		return nil
+	}
+
 	result := make(map[string]interface{})
+	defaultResult := make(map[string]interface{})
 	parameter := make(map[string]interface{})
-	for _, d := range data {
-		param := d.(map[string]interface{})
+	for _, d1 := range data {
+		param := d1.(map[string]interface{})
 		result[param["name"].(string)] = fmt.Sprintf("%v", param["currentValue"])
 	}
-	if local, ok := d.GetOk("parameters"); ok {
-		for k, v := range local.(map[string]interface{}) {
-			if _, ok = result[k]; ok {
+	for _, d1 := range defaultData {
+		param := d1.(map[string]interface{})
+		defaultResult[param["name"].(string)] = fmt.Sprintf("%v", param["defaultValue"])
+	}
+	localParams := d.Get("parameters").(map[string]interface{})
+	if len(localParams) < 1 {
+		for k, v := range result {
+			if v1, ok := defaultResult[k]; ok {
+				if v != v1 {
+					parameter[k] = v
+				}
+			}
+		}
+	} else {
+		for k, _ := range localParams {
+			if v, ok := result[k]; ok {
 				parameter[k] = v
 			}
 		}
@@ -141,20 +179,23 @@ func resourceRedisInstanceSgRead(d *schema.ResourceData, meta interface{}) error
 	if err != nil {
 		return err
 	}
+	logger.Debug(logger.ReqFormat, "Demo", *resp)
 	if item, ok := (*resp)["Data"].(map[string]interface{}); ok {
 		var itemSetSlice []string
+		sgIds := ""
 		if sgs, ok := item["list"].([]interface{}); ok {
 			for _, sg := range sgs {
 				if info, ok := sg.(map[string]interface{}); ok {
+					sgIds = sgIds + info["securityGroupId"].(string) + ","
 					itemSetSlice = append(itemSetSlice, info["securityGroupId"].(string))
-				}
-				if info, ok := sg.(map[string]interface{}); ok && d.Get("security_group_id").(string) == info["securityGroupId"].(string) {
-					err = d.Set("security_group_id", info["securityGroupId"].(string))
 				}
 			}
 		}
+		err = d.Set("security_group_id", sgIds[0:len(sgIds)-1])
+		if err != nil {
+			return err
+		}
 		//err =  d.Set("security_group_ids", itemSetSlice)
-
 	}
 	return err
 }
@@ -318,7 +359,7 @@ func modifyRedisInstanceSpec(d *schema.ResourceData, meta interface{}) error {
 	return err
 }
 
-func modifyRedisInstanceSg(d *schema.ResourceData, meta interface{}) error {
+func modifyRedisInstanceSg(d *schema.ResourceData, meta interface{}, isUpdate bool) error {
 	var (
 		err  error
 		req  map[string]interface{}
@@ -328,84 +369,83 @@ func modifyRedisInstanceSg(d *schema.ResourceData, meta interface{}) error {
 	transform := map[string]SdkReqTransform{
 		"security_group_id": {},
 	}
-	req, err = SdkRequestAutoMapping(d, resourceRedisInstance(), true, transform, nil)
+	req, err = SdkRequestAutoMapping(d, resourceRedisInstance(), isUpdate, transform, nil)
 	if err != nil {
 		return fmt.Errorf("error on updating instance , error is %s", err)
 	}
 
 	if len(req) > 0 {
+		var (
+			arrayOldSg []interface{}
+			arrayNewSg []interface{}
+		)
 		oldSg, newSg := d.GetChange("security_group_id")
-		req["CacheId.1"] = d.Id()
-		if oldSg != "" {
-			req["SecurityGroupId"] = oldSg
-			integrationAzConf := &IntegrationRedisAzConf{
-				resourceData: d,
-				client:       meta.(*KsyunClient),
-				req:          &req,
-				field:        "available_zone",
-				requestFunc: func() (*map[string]interface{}, error) {
-					conn := meta.(*KsyunClient).kcsv1conn
-					return conn.DeallocateSecurityGroup(&req)
-				},
+		for _, v := range strings.Split(oldSg.(string), ",") {
+			if v != "" {
+				arrayOldSg = append(arrayOldSg, v)
 			}
-			action := "DeallocateSecurityGroup"
-			logger.Debug(logger.ReqFormat, action, req)
-			resp, err = integrationAzConf.integrationRedisAz()
-			if err != nil {
-				return fmt.Errorf("error on DeallocateSecurityGroup instance %q, %s", d.Id(), err)
-			}
-			logger.Debug(logger.RespFormat, action, req, *resp)
 		}
+		for _, v := range strings.Split(newSg.(string), ",") {
+			if v != "" {
+				arrayNewSg = append(arrayNewSg, v)
+			}
+		}
+		oi := schema.NewSet(schema.HashString, arrayOldSg)
+		ni := schema.NewSet(schema.HashString, arrayNewSg)
 
-		if newSg != "" {
-			querySg := make(map[string]interface{})
-			querySg["CacheId"] = d.Id()
+		removeSgs := oi.Difference(ni).List()
+		newSgs := ni.Difference(oi).List()
 
+		if len(removeSgs) > 0 {
+			for _, sg := range removeSgs {
+				removeReq := make(map[string]interface{})
+				removeReq["CacheId.1"] = d.Id()
+				removeReq["SecurityGroupId"] = sg
+				integrationAzConf := &IntegrationRedisAzConf{
+					resourceData: d,
+					client:       meta.(*KsyunClient),
+					req:          &removeReq,
+					field:        "available_zone",
+					requestFunc: func() (*map[string]interface{}, error) {
+						conn := meta.(*KsyunClient).kcsv1conn
+						return conn.DeallocateSecurityGroup(&removeReq)
+					},
+				}
+				action := "DeallocateSecurityGroup"
+				logger.Debug(logger.ReqFormat, action, removeReq)
+				resp, err = integrationAzConf.integrationRedisAz()
+				if err != nil {
+					return fmt.Errorf("error on DeallocateSecurityGroup instance %q, %s", d.Id(), err)
+				}
+				logger.Debug(logger.RespFormat, action, removeReq, *resp)
+			}
+
+		}
+		if len(newSgs) > 0 {
+			addReq := make(map[string]interface{})
+			addReq["CacheId.1"] = d.Id()
+			count := 1
+			for _, sg := range newSgs {
+				addReq["SecurityGroupId."+strconv.Itoa(count)] = sg
+				count = count + 1
+			}
 			integrationAzConf := &IntegrationRedisAzConf{
 				resourceData: d,
 				client:       meta.(*KsyunClient),
-				req:          &querySg,
+				req:          &addReq,
 				field:        "available_zone",
 				requestFunc: func() (*map[string]interface{}, error) {
 					conn := meta.(*KsyunClient).kcsv1conn
-					return conn.DescribeSecurityGroups(&querySg)
-				},
-			}
-
-			resp, err = integrationAzConf.integrationRedisAz()
-			if err != nil {
-				return err
-			}
-			if item, ok := (*resp)["Data"].(map[string]interface{}); ok {
-				if sgs, ok := item["list"].([]interface{}); ok {
-					for _, sg := range sgs {
-						if info, ok := sg.(map[string]interface{}); ok {
-							if info["securityGroupId"].(string) == newSg.(string) {
-								err = d.Set("security_group_id", newSg.(string))
-								return err
-							}
-						}
-					}
-				}
-			}
-			req["SecurityGroupId"] = newSg
-			integrationAzConf = &IntegrationRedisAzConf{
-				resourceData: d,
-				client:       meta.(*KsyunClient),
-				req:          &req,
-				field:        "available_zone",
-				requestFunc: func() (*map[string]interface{}, error) {
-					conn := meta.(*KsyunClient).kcsv1conn
-					return conn.AllocateSecurityGroup(&req)
+					return conn.AllocateSecurityGroup(&addReq)
 				},
 			}
 			action := "AllocateSecurityGroup"
-			logger.Debug(logger.ReqFormat, action, req)
+			logger.Debug(logger.ReqFormat, action, addReq)
 			resp, err = integrationAzConf.integrationRedisAz()
 			if err != nil {
 				return fmt.Errorf("error on AllocateSecurityGroup instance %q, %s", d.Id(), err)
 			}
-			logger.Debug(logger.RespFormat, action, req, *resp)
+			logger.Debug(logger.RespFormat, action, addReq, *resp)
 		}
 
 	}
@@ -419,7 +459,6 @@ func resourceRedisInstanceParameterCheckAndPrepare(d *schema.ResourceData, meta 
 		err   error
 		index int
 	)
-	conn := meta.(*KsyunClient).kcsv1conn
 	req := make(map[string]interface{})
 
 	parameters := make(map[string]string)
@@ -457,10 +496,22 @@ func resourceRedisInstanceParameterCheckAndPrepare(d *schema.ResourceData, meta 
 	}
 
 	//condition on set parameters, check parameter key and value valid
+	defaultReq := map[string]interface{}{
+		"ParamVersion": d.Get("protocol"),
+	}
+	integrationAzConf := &IntegrationRedisAzConf{
+		resourceData: d,
+		client:       meta.(*KsyunClient),
+		req:          &defaultReq,
+		field:        "available_zone",
+		requestFunc: func() (*map[string]interface{}, error) {
+			conn := meta.(*KsyunClient).kcsv1conn
+			return conn.DescribeCacheDefaultParameters(&defaultReq)
+		},
+	}
 	action := "DescribeCacheDefaultParameters"
-	logger.Debug(logger.ReqFormat, action, nil)
-	resp, err = conn.DescribeCacheDefaultParameters(&map[string]interface{}{})
-	logger.Debug(logger.RespFormat, action, nil, resp)
+	logger.Debug(logger.ReqFormat, action, defaultReq)
+	resp, err = integrationAzConf.integrationRedisAz()
 	if err != nil {
 		return &req, fmt.Errorf("error on DescribeCacheDefaultParameters: %s", err)
 	}

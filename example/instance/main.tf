@@ -1,40 +1,42 @@
-# Specify the provider and access details
-provider "ksyun" {
-  region = "cn-beijing-6"
+variable "volume_size" {
+  default = 20
 }
-
 resource "ksyun_instance" "default" {
-  image_id="e22d048a-e0b8-465e-a692-d3358981eeff"
-  instance_type="S4.1A"
-//  key_id=["6e3dee9c-291c-4647-bfc2-4c1eaa93fb80"]
-//  system_disk{
-//    disk_type="SSD3.0"
-//    disk_size=30
+  image_id="IMG-cf8fe1f2-68f2-4483-ae33-ba463c203278"
+  instance_type="N3.1A"
+//  local_volume_snapshot_id = "1111111111"
+  key_id=["0dd40a91-5712-4b8a-a4d7-f9d9412c9d2b","9c45b560-e51d-4aee-9e99-0e292476692d"]
+  system_disk{
+    disk_type="SSD3.0"
+    disk_size= 40
+  }
+  data_disks {
+    disk_type = "SSD3.0"
+    disk_size = var.volume_size
+    delete_with_instance = true
+  }
+//  data_disks {
+//    disk_type = "SSD3.0"
+//    disk_size = 200
 //  }
-  data_disks {
-    disk_type = "SSD3.0"
-    disk_size = 100
-  }
-  data_disks {
-    disk_type = "SSD3.0"
-    disk_size = 200
-  }
-  data_disk_gb=0
+//  data_disk_gb=0
   #only support part type
-  subnet_id="55dcbce0-d052-4556-aaf1-b17972d3f5e2"
-  instance_password="Aa123456"
+  subnet_id="81530211-2785-47a8-b2a0-ae13120fa97d"
+//  instance_password="Aa123456"
   keep_image_login=false
   charge_type="Daily"
-  purchase_time=1
-  security_group_id=["90877b57-cb42-4635-89fc-633d0355f46b","855b74e3-cc4c-476c-b08f-551af4009c35"]
-  private_ip_address=""
-  instance_name="xym-tf"
-  instance_name_suffix=""
-  sriov_net_support="false"
+//  purchase_time=1
+  security_group_id=["35ac2642-1958-4ed7-b02c-dc86f27bc9d9","7e2f45b5-e79d-4612-a7fc-fe74a50b639a"]
+//  private_ip_address=""
+  instance_name="xym-new-1"
+//  sriov_net_support="false"
   project_id=0
-  data_guard_id=""
-  d_n_s1 =""
-  d_n_s2 =""
-  force_delete =true
-  user_data=""
+//  data_guard_id=""
+//  force_delete =true
+//  user_data=""
+//  iam_role_name = "KsyunKECImageImportDefaultRole"
+  force_reinstall_system = false
+  instance_status = "active"
+//  dns1 = "198.18.254.30"
+//  dns2 = "198.18.254.31"
 }

@@ -1,8 +1,24 @@
 package ksyun
 
-import "github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+import (
+	"github.com/aws/aws-sdk-go/aws/awserr"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+)
+
+type apiCall struct {
+	param       *map[string]interface{}
+	action      string
+	beforeCall  beforeCallFunc
+	executeCall executeCallFunc
+	callError   callErrorFunc
+	afterCall   afterCallFunc
+}
 
 type ksyunApiCallFunc func(d *schema.ResourceData, meta interface{}) error
+type callErrorFunc func(d *schema.ResourceData, client *KsyunClient, call apiCall, baseErr error) error
+type executeCallFunc func(d *schema.ResourceData, client *KsyunClient, call apiCall) (*map[string]interface{}, error)
+type afterCallFunc func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call apiCall) error
+type beforeCallFunc func(d *schema.ResourceData, client *KsyunClient, call apiCall) (bool, error)
 
 func ksyunApiCall(api []ksyunApiCallFunc, d *schema.ResourceData, meta interface{}) (err error) {
 	if api != nil {
@@ -11,6 +27,48 @@ func ksyunApiCall(api []ksyunApiCallFunc, d *schema.ResourceData, meta interface
 				err = f(d, meta)
 				if err != nil {
 					return err
+				}
+			}
+		}
+	}
+	return err
+}
+
+func ksyunApiCallNew(api []apiCall, d *schema.ResourceData, client *KsyunClient, isDryRun bool) (err error) {
+	if api != nil {
+		for _, f := range api {
+			if f.executeCall != nil {
+				var (
+					resp *map[string]interface{}
+				)
+				doExecute := true
+				if isDryRun {
+					(*(f.param))["DryRun"] = true
+				} else if f.beforeCall != nil {
+					doExecute, err = f.beforeCall(d, client, f)
+				}
+				if doExecute || isDryRun {
+					resp, err = f.executeCall(d, client, f)
+				}
+				if isDryRun {
+					delete(*(f.param), "DryRun")
+					if ksyunError, ok := err.(awserr.RequestFailure); ok && ksyunError.StatusCode() == 412 {
+						err = nil
+					}
+				} else {
+					if err != nil {
+						if f.callError == nil {
+							return err
+						} else {
+							err = f.callError(d, client, f, err)
+						}
+					}
+					if err != nil {
+						return err
+					}
+					if doExecute && f.afterCall != nil {
+						err = f.afterCall(d, client, resp, f)
+					}
 				}
 			}
 		}

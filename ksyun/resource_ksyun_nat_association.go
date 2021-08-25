@@ -143,7 +143,7 @@ func resourceKsyunNatAssociationRead(d *schema.ResourceData, m interface{}) erro
 	p := strings.Split(d.Id(), ":")
 	req := make(map[string]interface{})
 	req["NatId.1"] = p[0]
-	projectErr := AddProjectInfo(d, &req, m.(*KsyunClient))
+	projectErr := addProjectInfo(d, &req, m.(*KsyunClient))
 	if projectErr != nil {
 		return projectErr
 	}
