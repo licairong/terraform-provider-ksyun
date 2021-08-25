@@ -44,13 +44,13 @@ func stringSplitSchemaValidateFunc(sep string) schema.SchemaValidateFunc {
 	}
 }
 
-func stringSplitChange(sep string,field string,currentExists []string,d *schema.ResourceData) (add []string, del []string) {
+func stringSplitChange(sep string, field string, currentExists []string, d *schema.ResourceData) (add []string, del []string) {
 	var (
 		oldVal interface{}
 		newVal interface{}
 	)
-	if d.HasChange(field){
-		oldVal ,newVal = d.GetChange(field)
+	if d.HasChange(field) {
+		oldVal, newVal = d.GetChange(field)
 		for _, current := range currentExists {
 			exist := false
 			for _, change := range strings.Split(newVal.(string), sep) {
@@ -60,7 +60,7 @@ func stringSplitChange(sep string,field string,currentExists []string,d *schema.
 				}
 			}
 			if !exist && strings.Contains(oldVal.(string), current) {
-				del = append(del,current)
+				del = append(del, current)
 			}
 		}
 		for _, change := range strings.Split(newVal.(string), sep) {
@@ -72,18 +72,16 @@ func stringSplitChange(sep string,field string,currentExists []string,d *schema.
 				}
 			}
 			if !exist {
-				add = append(add,change)
+				add = append(add, change)
 			}
 		}
 	}
 	return add, del
 }
 
-func stringSplitRead(sep string,field string,currentExists []string,d *schema.ResourceData)(result string){
+func stringSplitRead(sep string, field string, currentExists []string, d *schema.ResourceData) (result string) {
 	for _, current := range currentExists {
-		if strings.Contains(d.Get(field).(string), current) {
-			result = result + current + sep
-		}
+		result = result + current + sep
 	}
 	if result != "" {
 		result = result[0 : len(result)-1]

@@ -1,10 +1,6 @@
-provider "ksyun"{
-  region = "cn-shanghai-2"
-}
-
-resource "ksyun_krds_security_group" "krds_sec_group_14" {
-  security_group_name = "terraform_security_group_14"
-  security_group_description = "terraform-security-group-14"
+resource "ksyun_krds_security_group" "default" {
+  security_group_name = "SecGroup_d24b58bb-a311-47ef-b5f4-77d93dbb1938"
+  security_group_description = "Security Group for d24b58bb-a311-47ef-b5f4-77d93dbb1938"
   security_group_rule{
     security_group_rule_protocol = "182.133.0.0/16"
     security_group_rule_name = "wtf"

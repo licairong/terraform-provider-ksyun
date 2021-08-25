@@ -135,7 +135,7 @@ func resourceKsyunNatRead(d *schema.ResourceData, meta interface{}) error {
 
 	readNat := make(map[string]interface{})
 	readNat["NatId.1"] = d.Id()
-	err := AddProjectInfo(d, &readNat, meta.(*KsyunClient))
+	err := addProjectInfo(d, &readNat, meta.(*KsyunClient))
 	if err != nil {
 		return fmt.Errorf("error on reading nat %q, %s", d.Id(), err)
 	}

@@ -295,7 +295,7 @@ func transformListUnique(v interface{}, k string, t SdkReqTransform, req *map[st
 					flag := false
 					schemaKey := fmt.Sprintf("%s.%d.%s", k, i, k2)
 					if forceGet {
-						if d.HasChange(schemaKey) && !d.IsNewResource() {
+						if t.forceUpdateParam || (d.HasChange(schemaKey) && !d.IsNewResource()) {
 							flag = true
 						}
 					} else {
@@ -582,7 +582,7 @@ func SdkResponseAutoResourceData(d *schema.ResourceData, resource *schema.Resour
 				if r.Elem != nil {
 					if elem, ok := r.Elem.(*schema.Resource); ok {
 						if m.FieldRespFunc != nil {
-							value = m.FieldRespFunc(v)
+							value = SdkResponseAutoResourceData(d, elem, m.FieldRespFunc(v), extra, false)
 						} else {
 							value = SdkResponseAutoResourceData(d, elem, v, extra, false)
 						}
@@ -797,6 +797,21 @@ func OtherErrorProcess(remain *int, error error) *resource.RetryError {
 	} else {
 		return resource.NonRetryableError(error)
 	}
+}
+
+func ModifyProjectInstanceNew(resourceId string, param *map[string]interface{}, client *KsyunClient) error {
+	if projectId, ok := (*param)["ProjectId"]; ok {
+		req := make(map[string]interface{})
+		req["InstanceId"] = resourceId
+		req["ProjectId"] = projectId
+		conn := client.iamconn
+		_, err := conn.UpdateInstanceProjectId(&req)
+		if err != nil {
+			return err
+		}
+		delete(*param, "ProjectId")
+	}
+	return nil
 }
 
 func ModifyProjectInstance(resourceId string, param *map[string]interface{}, meta interface{}) error {

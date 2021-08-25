@@ -12,6 +12,25 @@ func purchaseTimeDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bo
 	return true
 }
 
+func kecImportDiffSuppress(k, old, new string, d *schema.ResourceData) bool {
+	//由于一些字段暂时无法支持从查询中返回 所以现在设立做特殊处理拦截变更 用来适配导入的场景 后续支持后在对导入场景做优化
+	if !d.IsNewResource() {
+		if !d.Get("has_init_info").(bool) {
+			if k == "local_volume_snapshot_id" {
+				return true
+			}
+			if k == "user_data" {
+				return true
+			}
+		}
+	}
+	if (k == "keep_image_login" || k == "key_id") && !d.IsNewResource() && !d.HasChange("image_id") {
+		return true
+	}
+
+	return false
+}
+
 func kcsParameterDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
 	if old != "" && new == "" {
 		return true
