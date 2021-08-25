@@ -211,21 +211,69 @@ func readAndSetKrdsInstanceParameters(d *schema.ResourceData, meta interface{}) 
 	if err != nil {
 		return err
 	}
+	defaultParameter, err := readKrdsDefaultParameters(d, nil, meta)
+	if err != nil {
+		return err
+	}
 	remote := make(map[string]map[string]interface{})
 	var parameters []map[string]interface{}
-	if local, ok := d.GetOk("parameters"); ok {
-		for k, v := range parameter {
-			m := make(map[string]interface{})
-			m["name"] = k
-			if vf, ok := v.(float64); ok {
-				m["value"] = fmt.Sprintf("%v", strconv.FormatInt(int64(vf), 10))
-			} else {
-				m["value"] = fmt.Sprintf("%v", v)
-			}
-
-			remote[k] = m
+	//参考aws的做法，由于配置有很多默认项,这里只列出展示用户可能修改的配置参数
+	local := d.Get("parameters").(*schema.Set)
+	for k, v := range parameter {
+		t := "string"
+		m := make(map[string]interface{})
+		if v1, ok := defaultParameter[k]; ok {
+			t = v1.(map[string]interface{})["Type"].(string)
 		}
-		for _, value := range local.(*schema.Set).List() {
+		m["name"] = k
+		if vf, ok := v.(float64); ok {
+			switch t {
+			case "float":
+				m["value"] = fmt.Sprintf("%v", strconv.FormatFloat(vf, 'g', 1, 64))
+			default:
+				m["value"] = fmt.Sprintf("%v", strconv.FormatInt(int64(vf), 10))
+			}
+		} else {
+			m["value"] = fmt.Sprintf("%v", v)
+		}
+
+		remote[k] = m
+	}
+	if local.Len() < 1 {
+		for k, v := range remote {
+			if v1, ok := defaultParameter[k]; ok {
+				switch v1.(map[string]interface{})["Type"] {
+				case "integer":
+					if strconv.FormatInt(int64(v1.(map[string]interface{})["Default"].(float64)), 10) != v["value"] {
+						parameters = append(parameters, v)
+					}
+				case "float":
+					if strconv.FormatFloat(v1.(map[string]interface{})["Default"].(float64), 'g', 1, 64) != v["value"] {
+						parameters = append(parameters, v)
+					}
+				case "expression":
+					if v1.(map[string]interface{})["Variable"] == "instance_memory" {
+						ramStr := strings.Replace(strings.Split(d.Get("db_instance_class").(string), "|")[0], "db.ram.", "", -1)
+						scaleStr := strings.Replace(v1.(map[string]interface{})["DefaultScaleFactor"].(string), "%", "", -1)
+						ram, _ := strconv.ParseInt(ramStr, 10, 64)
+						scale, _ := strconv.ParseFloat(scaleStr, 64)
+						defaultScaleValue := strconv.FormatInt(int64(float64(ram*1024*1024*1024)*(scale/100)), 10)
+						if defaultScaleValue != v["value"] {
+							parameters = append(parameters, v)
+						}
+					} else {
+						parameters = append(parameters, v)
+					}
+				default:
+					if v1.(map[string]interface{})["Default"] != v["value"] {
+						parameters = append(parameters, v)
+					}
+				}
+
+			}
+		}
+	} else {
+		for _, value := range local.List() {
 			name := value.(map[string]interface{})["name"]
 			for k, v := range remote {
 				if k == name {
@@ -235,6 +283,9 @@ func readAndSetKrdsInstanceParameters(d *schema.ResourceData, meta interface{}) 
 			}
 		}
 	}
+
+	//if local, ok := d.GetOk("parameters"); ok {
+	//}
 	err = d.Set("parameters", parameters)
 	return err
 }
@@ -356,7 +407,8 @@ func prepareModifyDbParameterParams(d *schema.ResourceData, meta interface{}, ke
 			dv := defaultObj.(map[string]interface{})["Default"]
 			dt := defaultObj.(map[string]interface{})["Type"].(string)
 			dr := defaultObj.(map[string]interface{})["RestartRequired"].(bool)
-			if dt == "integer" {
+			switch dt {
+			case "integer":
 				dMin := int64(defaultObj.(map[string]interface{})["Min"].(float64))
 				dMax := int64(defaultObj.(map[string]interface{})["Max"].(float64))
 				valueNum, err := strconv.ParseInt(kv[key], 10, 64)
@@ -372,7 +424,52 @@ func prepareModifyDbParameterParams(d *schema.ResourceData, meta interface{}, ke
 				if valueNum < dMin || valueNum > dMax {
 					return needRestart, num, fmt.Errorf("parameter %s must in [%d , %d]", key, dMin, dMax)
 				}
-			} else {
+			case "float":
+				dMin := defaultObj.(map[string]interface{})["Min"].(float64)
+				dMax := defaultObj.(map[string]interface{})["Max"].(float64)
+				valueNum, err := strconv.ParseFloat(kv[key], 64)
+				if err != nil {
+					return needRestart, num, err
+				}
+				if toDefault && valueNum == dv.(float64) {
+					continue
+				}
+				if !toDefault && len(currents) > 0 && valueNum == currents[key].(float64) {
+					continue
+				}
+				if valueNum < dMin || valueNum > dMax {
+					return needRestart, num, fmt.Errorf("parameter %s must in [%f , %f]", key, dMin, dMax)
+				}
+				continue
+			case "expression":
+				if defaultObj.(map[string]interface{})["Variable"] == "instance_memory" {
+					dMin := int64(defaultObj.(map[string]interface{})["Min"].(float64))
+					scaleStr := strings.Replace(defaultObj.(map[string]interface{})["DefaultScaleFactor"].(string), "%", "", -1)
+					maxScaleStr := strings.Replace(defaultObj.(map[string]interface{})["MaxScaleFactor"].(string), "%", "", -1)
+					ramStr := strings.Replace(strings.Split(d.Get("db_instance_class").(string), "|")[0], "db.ram.", "", -1)
+					ram, _ := strconv.ParseInt(ramStr, 10, 64)
+					maxScale, _ := strconv.ParseFloat(maxScaleStr, 64)
+					scale, _ := strconv.ParseFloat(scaleStr, 64)
+					maxScaleValue := int64(float64(ram*1024*1024*1024) * (maxScale / 100))
+					defaultScaleValue := int64(float64(ram*1024*1024*1024) * (scale / 100))
+					valueNum, err := strconv.ParseInt(kv[key], 10, 64)
+					if err != nil {
+						return needRestart, num, err
+					}
+					if toDefault && valueNum == defaultScaleValue {
+						continue
+					}
+					if !toDefault && len(currents) > 0 && valueNum == int64(currents[key].(float64)) {
+						continue
+					}
+					if valueNum < dMin || valueNum > maxScaleValue {
+						return needRestart, num, fmt.Errorf("parameter %s must in [%d , %d]", key, dMin, maxScaleValue)
+					}
+					dv = defaultScaleValue
+				} else {
+					return needRestart, num, fmt.Errorf("parameter %s must not support in terraform-provider-ksyun now", key)
+				}
+			default:
 				if toDefault && dv.(string) == kv[key] {
 					continue
 				}
@@ -413,19 +510,19 @@ func createKrdsRrParameterGroup(d *schema.ResourceData, meta interface{}) (call 
 		data map[string]interface{}
 	)
 	// read master
-	data,err = readKrdsInstance(d,meta,d.Get("db_instance_identifier").(string))
+	data, err = readKrdsInstance(d, meta, d.Get("db_instance_identifier").(string))
 	if err != nil {
 		return call, err
 	}
-	err = d.Set("engine",data["Engine"])
+	err = d.Set("engine", data["Engine"])
 	if err != nil {
 		return call, err
 	}
-	err = d.Set("engine_version",data["EngineVersion"])
+	err = d.Set("engine_version", data["EngineVersion"])
 	if err != nil {
 		return call, err
 	}
-	return modifyKrdsParameterGroup(d,meta,true)
+	return modifyKrdsParameterGroup(d, meta, true)
 }
 
 func createKrdsTempParameterGroup(d *schema.ResourceData, meta interface{}) (call ksyunApiCallFunc, err error) {
@@ -474,7 +571,7 @@ func removeKrdsParameterGroup(d *schema.ResourceData, meta interface{}) (err err
 	})
 }
 
-func modifyKrdsParameterGroup(d *schema.ResourceData, meta interface{},onCreate bool) (call ksyunApiCallFunc, err error) {
+func modifyKrdsParameterGroup(d *schema.ResourceData, meta interface{}, onCreate bool) (call ksyunApiCallFunc, err error) {
 	paramsReq, restart, err := checkAndProcessKrdsParameters(d, meta)
 	if err != nil {
 
@@ -549,7 +646,7 @@ func createKrdsInstance(d *schema.ResourceData, meta interface{}, isRR bool) (er
 		}
 		api = append(api, tempParameterGroupCall)
 		//ModifySG
-		modifyDBSg, err := modifyKrdsInstanceSg(d, meta,false)
+		modifyDBSg, err := modifyKrdsInstanceSg(d, meta, false)
 		if err != nil {
 			return err
 		}
@@ -679,7 +776,7 @@ func createKrdsRrInstance(d *schema.ResourceData, meta interface{}) (call ksyunA
 			instanceId := krdsInstance["DBInstanceIdentifier"].(string)
 			dBParameterGroupId := krdsInstance["DBParameterGroupId"].(string)
 			d.SetId(instanceId)
-			err = d.Set("db_parameter_group_id",dBParameterGroupId)
+			err = d.Set("db_parameter_group_id", dBParameterGroupId)
 			if err != nil {
 				return err
 			}
@@ -730,7 +827,7 @@ func removeKrdsDbInstance(d *schema.ResourceData, meta interface{}) (err error) 
 	})
 }
 
-func modifyKrdsInstance(d *schema.ResourceData, meta interface{},isRR bool) (err error) {
+func modifyKrdsInstance(d *schema.ResourceData, meta interface{}, isRR bool) (err error) {
 	var (
 		call []ksyunApiCallFunc
 	)
@@ -741,7 +838,7 @@ func modifyKrdsInstance(d *schema.ResourceData, meta interface{},isRR bool) (err
 	}
 	call = append(call, modifyDBCall)
 	//ModifySG
-	modifyDBSg, err := modifyKrdsInstanceSg(d, meta,true)
+	modifyDBSg, err := modifyKrdsInstanceSg(d, meta, true)
 	if err != nil {
 		return err
 	}
@@ -755,7 +852,7 @@ func modifyKrdsInstance(d *schema.ResourceData, meta interface{},isRR bool) (err
 		return err
 	}
 	call = append(call, modifyDBInstanceSpecCall)
-	if !isRR{
+	if !isRR {
 		//ModifyDBInstanceType
 		modifyDBInstanceTypeCall, err := modifyKrdsInstanceType(d, meta)
 		if err != nil {
@@ -787,7 +884,7 @@ func modifyKrdsInstance(d *schema.ResourceData, meta interface{},isRR bool) (err
 		var (
 			modifyParametersCall ksyunApiCallFunc
 		)
-		modifyParametersCall, err = modifyKrdsParameterGroup(d, meta,false)
+		modifyParametersCall, err = modifyKrdsParameterGroup(d, meta, false)
 		if err != nil {
 			return err
 		}
@@ -842,7 +939,7 @@ func modifyKrdsInstanceCommon(d *schema.ResourceData, meta interface{}) (call ks
 	return call, err
 }
 
-func modifyKrdsInstanceSg(d *schema.ResourceData, meta interface{},isUpdate bool) (call ksyunApiCallFunc, err error) {
+func modifyKrdsInstanceSg(d *schema.ResourceData, meta interface{}, isUpdate bool) (call ksyunApiCallFunc, err error) {
 	var modifyInstanceSgParam map[string]interface{}
 	transform := map[string]SdkReqTransform{
 		"security_group_id": {},
@@ -949,7 +1046,7 @@ func modifyKrdsInstanceEngineVersion(d *schema.ResourceData, meta interface{}) (
 		return call, err
 	}
 	if len(upgradeDBInstanceEngineVersionParam) > 0 {
-		_, err = modifyKrdsParameterGroup(d, meta,false)
+		_, err = modifyKrdsParameterGroup(d, meta, false)
 		if err != nil {
 			return call, err
 		}
@@ -1056,7 +1153,7 @@ func modifyKrdsInstanceAvailabilityZone(d *schema.ResourceData, meta interface{}
 }
 
 func allocateOrReleaseKrdsInstanceEip(d *schema.ResourceData, meta interface{}) (call ksyunApiCallFunc, err error) {
-	if _,ok :=d.GetOk("instance_has_eip");ok || (d.HasChange("instance_has_eip") && !d.IsNewResource()) {
+	if _, ok := d.GetOk("instance_has_eip"); ok || (d.HasChange("instance_has_eip") && !d.IsNewResource()) {
 		call = func(d *schema.ResourceData, meta interface{}) (err error) {
 			conn := meta.(*KsyunClient).krdsconn
 			err = checkKrdsInstanceState(d, meta, "", d.Timeout(schema.TimeoutUpdate))
@@ -1277,23 +1374,16 @@ func readKrdsAndSetSecurityGroup(d *schema.ResourceData, meta interface{}) (err 
 				var (
 					result []interface{}
 				)
-				if local, ok := d.GetOk("security_group_rule"); ok {
-					for _, value := range local.(*schema.Set).List() {
-						protocol := value.(map[string]interface{})["security_group_rule_protocol"]
-						for _, v := range i.([]interface{}) {
-							v1 := v.(map[string]interface{})["SecurityGroupRuleProtocol"]
-							if protocol == v1 {
-								r := map[string]interface{}{
-									"security_group_rule_id":       v.(map[string]interface{})["SecurityGroupRuleId"],
-									"created":                      v.(map[string]interface{})["Created"],
-									"security_group_rule_protocol": v.(map[string]interface{})["SecurityGroupRuleProtocol"],
-									"security_group_rule_name":     v.(map[string]interface{})["SecurityGroupRuleName"],
-								}
-								result = append(result, r)
-								break
-							}
-						}
+				for _, v := range i.([]interface{}) {
+					r := map[string]interface{}{
+						"security_group_rule_id":       v.(map[string]interface{})["SecurityGroupRuleId"],
+						"created":                      v.(map[string]interface{})["Created"],
+						"security_group_rule_protocol": v.(map[string]interface{})["SecurityGroupRuleProtocol"],
 					}
+					if o, ok := v.(map[string]interface{})["SecurityGroupRuleName"]; ok {
+						r["security_group_rule_name"] = o
+					}
+					result = append(result, r)
 				}
 				return result
 			},

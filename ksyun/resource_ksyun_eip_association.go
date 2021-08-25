@@ -119,7 +119,7 @@ func resourceKsyunEipAssociationRead(d *schema.ResourceData, meta interface{}) e
 
 	req := make(map[string]interface{})
 	req["AllocationId.1"] = strings.Split(d.Id(), ":")[0]
-	err := AddProjectInfo(d, &req, client)
+	err := addProjectInfo(d, &req, client)
 	if err != nil {
 		return fmt.Errorf("error on reading Address %q, %s", d.Id(), err)
 	}
