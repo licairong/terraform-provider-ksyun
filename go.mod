@@ -3,7 +3,7 @@ module github.com/terraform-providers/terraform-provider-ksyun
 go 1.12
 
 require (
-	github.com/KscSDK/ksc-sdk-go v0.1.28
+	github.com/KscSDK/ksc-sdk-go v0.1.29
 	github.com/aws/aws-sdk-go v1.25.3
 	github.com/client9/misspell v0.3.4
 	github.com/deckarep/golang-set v1.7.1 // indirect
@@ -15,4 +15,4 @@ require (
 	golang.org/x/mod v0.2.0 // indirect
 )
 
-replace github.com/KscSDK/ksc-sdk-go => ../../KscSDK/ksc-sdk-go
+//replace github.com/KscSDK/ksc-sdk-go => ../../KscSDK/ksc-sdk-go
