@@ -2,10 +2,8 @@ package ksyun
 
 import (
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/terraform-providers/terraform-provider-ksyun/logger"
-	"time"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceKsyunNat() *schema.Resource {
@@ -20,7 +18,6 @@ func resourceKsyunNat() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"project_id": {
 				Type:     schema.TypeString,
-				ForceNew: false,
 				Optional: true,
 				Computed: true,
 			},
@@ -30,54 +27,64 @@ func resourceKsyunNat() *schema.Resource {
 				Required: true,
 			},
 			"nat_name": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ForceNew:     false,
-				ValidateFunc: validateName,
-				Computed:     true,
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
 			},
 
 			"nat_mode": {
-				Type:         schema.TypeString,
-				ForceNew:     true,
-				Required:     true,
-				ValidateFunc: validateNatMode,
+				Type:     schema.TypeString,
+				ForceNew: true,
+				Required: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"Vpc",
+					"Subnet",
+				}, false),
 			},
 
 			"nat_type": {
-				Type:         schema.TypeString,
-				ForceNew:     true,
-				Required:     true,
-				ValidateFunc: validateNatType,
+				Type:     schema.TypeString,
+				ForceNew: true,
+				Optional: true,
+				Default:  "public",
+				ValidateFunc: validation.StringInSlice([]string{
+					"public",
+				}, false),
 			},
 
 			"nat_ip_number": {
 				Type:         schema.TypeInt,
-				ForceNew:     false,
 				Optional:     true,
 				Default:      1,
-				ValidateFunc: validateNatIpNumber,
+				ValidateFunc: validation.IntBetween(1, 10),
 			},
 
 			"band_width": {
 				Type:         schema.TypeInt,
-				ForceNew:     false,
 				Required:     true,
-				ValidateFunc: validateNatBandWidth,
+				ValidateFunc: validation.IntBetween(1, 15000),
 			},
 
 			"charge_type": {
-				Type:         schema.TypeString,
-				ForceNew:     true,
-				Optional:     true,
-				Default:      "DailyPaidByTransfer",
-				ValidateFunc: validateNatChargeType,
+				Type:     schema.TypeString,
+				ForceNew: true,
+				Optional: true,
+				Default:  "DailyPaidByTransfer",
+				ValidateFunc: validation.StringInSlice([]string{
+					"Monthly",
+					"Peak",
+					"Daily",
+					"PostPaidByAdvanced95Peak",
+					"DailyPaidByTransfer",
+				}, false),
 			},
 
 			"purchase_time": {
-				Type:     schema.TypeInt,
-				ForceNew: true,
-				Optional: true,
+				Type:             schema.TypeInt,
+				ForceNew:         true,
+				Optional:         true,
+				ValidateFunc:     validation.IntBetween(1, 36),
+				DiffSuppressFunc: purchaseTimeDiffSuppressFunc,
 			},
 
 			"nat_ip_set": {
@@ -105,121 +112,38 @@ func resourceKsyunNat() *schema.Resource {
 	}
 }
 
-func resourceKsyunNatCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*KsyunClient)
-	conn := client.vpcconn
-
-	var resp *map[string]interface{}
-	var err error
-
-	createNat, _ := SdkRequestAutoMapping(d, resourceKsyunNat(), false, nil, nil)
-	err = validatePurchaseTime(&createNat, "purchase_time", "charge_type", []string{"Monthly"})
+func resourceKsyunNatCreate(d *schema.ResourceData, meta interface{}) (err error) {
+	vpcService := VpcService{meta.(*KsyunClient)}
+	err = vpcService.CreateNat(d, resourceKsyunNat())
 	if err != nil {
-		return fmt.Errorf("error on creating nat, %s", err)
-	}
-	action := "CreateNat"
-	logger.Debug(logger.ReqFormat, action, createNat)
-	resp, err = conn.CreateNat(&createNat)
-	if err != nil {
-		return fmt.Errorf("error on creating nat, %s", err)
-	}
-	if resp != nil {
-		d.SetId((*resp)["NatId"].(string))
+		return fmt.Errorf("error on creating nat %q, %s", d.Id(), err)
 	}
 	return resourceKsyunNatRead(d, meta)
 }
 
-func resourceKsyunNatRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*KsyunClient)
-	conn := client.vpcconn
-
-	readNat := make(map[string]interface{})
-	readNat["NatId.1"] = d.Id()
-	err := addProjectInfo(d, &readNat, meta.(*KsyunClient))
+func resourceKsyunNatRead(d *schema.ResourceData, meta interface{}) (err error) {
+	vpcService := VpcService{meta.(*KsyunClient)}
+	err = vpcService.ReadAndSetNat(d, resourceKsyunNat())
 	if err != nil {
 		return fmt.Errorf("error on reading nat %q, %s", d.Id(), err)
 	}
-	action := "DescribeNats"
-	logger.Debug(logger.ReqFormat, action, readNat)
-	resp, err := conn.DescribeNats(&readNat)
-	if err != nil {
-		return fmt.Errorf("error on reading nat %q, %s", d.Id(), err)
-	}
-	if resp != nil {
-		items, ok := (*resp)["NatSet"].([]interface{})
-		if !ok || len(items) == 0 {
-			d.SetId("")
-			return nil
-		}
-		SdkResponseAutoResourceData(d, resourceKsyunNat(), items[0], resourceKsyunNatExtra())
-	}
-	return nil
+	return err
 }
 
-func resourceKsyunNatUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*KsyunClient)
-	conn := client.vpcconn
-
-	req, err := SdkRequestAutoMapping(d, resourceKsyunNat(), true, nil, nil)
+func resourceKsyunNatUpdate(d *schema.ResourceData, meta interface{}) (err error) {
+	vpcService := VpcService{meta.(*KsyunClient)}
+	err = vpcService.ModifyNat(d, resourceKsyunNat())
 	if err != nil {
-		return fmt.Errorf("error on updating Nat, %s", err)
-	}
-	err = ModifyProjectInstance(d.Id(), &req, meta)
-	if err != nil {
-		return fmt.Errorf("error on updating Nat, %s", err)
-	}
-	if len(req) > 0 {
-		req["NatId"] = d.Id()
-		action := "ModifyNat"
-		logger.Debug(logger.ReqFormat, action, req)
-		resp, err := conn.ModifyNat(&req)
-		logger.Debug(logger.AllFormat, action, req, resp, err)
-		if err != nil {
-			return fmt.Errorf("error on updating Nat, %s", err)
-		}
+		return fmt.Errorf("error on updating nat %q, %s", d.Id(), err)
 	}
 	return resourceKsyunNatRead(d, meta)
 }
 
-func resourceKsyunNatDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*KsyunClient)
-	conn := client.vpcconn
-	deleteNat := make(map[string]interface{})
-	deleteNat["NatId"] = d.Id()
-	action := "DeleteNat"
-
-	return resource.Retry(25*time.Minute, func() *resource.RetryError {
-		logger.Debug(logger.ReqFormat, action, deleteNat)
-		resp, err1 := conn.DeleteNat(&deleteNat)
-		logger.Debug(logger.AllFormat, action, deleteNat, resp, err1)
-		if err1 == nil {
-			return nil
-		} else if notFoundError(err1) {
-			return nil
-		} else {
-			return resource.RetryableError(fmt.Errorf("error on  deleting nat %q, %s", d.Id(), err1))
-		}
-	})
-
-}
-
-func resourceKsyunNatExtra() map[string]SdkResponseMapping {
-	extra := make(map[string]SdkResponseMapping)
-	extra["ChargeType"] = SdkResponseMapping{
-		Field: "charge_type",
-		FieldRespFunc: func(i interface{}) interface{} {
-			charge := i.(string)
-			switch charge {
-			case "PostPaidByPeak":
-				return "Peak"
-			case "PostPaidByDay":
-				return "Daily"
-			case "PostPaidByTransfer":
-				return "TrafficMonthly"
-			default:
-				return charge
-			}
-		},
+func resourceKsyunNatDelete(d *schema.ResourceData, meta interface{}) (err error) {
+	vpcService := VpcService{meta.(*KsyunClient)}
+	err = vpcService.RemoveNat(d)
+	if err != nil {
+		return fmt.Errorf("error on deleting nat %q, %s", d.Id(), err)
 	}
-	return extra
+	return err
 }

@@ -129,6 +129,12 @@ func Provider() terraform.ResourceProvider {
 			"ksyun_scaling_notification":        resourceKsyunScalingNotification(),
 			"ksyun_rabbitmq_instance":           resourceKsyunRabbitmq(),
 			"ksyun_rabbitmq_security_rule":      resourceKsyunRabbitmqSecurityRule(),
+			"ksyun_network_acl":                 resourceKsyunNetworkAcl(),
+			"ksyun_network_acl_entry":           resourceKsyunNetworkAclEntry(),
+			"ksyun_network_acl_associate":       resourceKsyunNetworkAclAssociate(),
+			"ksyun_vpn_gateway":                 resourceKsyunVpnGateway(),
+			"ksyun_vpn_customer_gateway":        resourceKsyunVpnCustomerGateway(),
+			"ksyun_vpn_tunnel":                  resourceKsyunVpnTunnel(),
 		},
 		ConfigureFunc: providerConfigure,
 	}

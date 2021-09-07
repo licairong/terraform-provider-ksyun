@@ -57,6 +57,7 @@ func notFoundError(err error) bool {
 	if strings.Contains(errMessage, "notfound") ||
 		strings.Contains(errMessage, "not found") ||
 		strings.Contains(errMessage, "not exist") ||
+		strings.Contains(errMessage, "not associate") ||
 		strings.Contains(errMessage, "invalid") ||
 		strings.Contains(errMessage, "not_found") {
 		//strings.Contains(errMessage,"notfound"){

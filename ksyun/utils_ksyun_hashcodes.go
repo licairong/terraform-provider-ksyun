@@ -1,6 +1,13 @@
 package ksyun
 
-import "github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
+import (
+	"bytes"
+	"fmt"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/hashcode"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/terraform-providers/terraform-provider-ksyun/logger"
+	"strings"
+)
 
 func kecNetworkInterfaceHash(v interface{}) int {
 	if v == nil {
@@ -8,4 +15,127 @@ func kecNetworkInterfaceHash(v interface{}) int {
 	}
 	m := v.(map[string]interface{})
 	return hashcode.String(m["network_interface_id"].(string))
+}
+
+func networkAclEntryHash(v interface{}) int {
+	if v == nil {
+		return hashcode.String("")
+	}
+	m := v.(map[string]interface{})
+	buf := networkAclEntryHashBase(m)
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(m["description"].(string))))
+	return hashcode.String(buf.String())
+}
+
+func networkAclEntrySimpleHash(v interface{}) int {
+	if v == nil {
+		return hashcode.String("")
+	}
+	m := v.(map[string]interface{})
+	buf := networkAclEntryHashBase(m)
+	return hashcode.String(buf.String())
+}
+
+func networkAclEntryHashBase(m map[string]interface{}) (buf bytes.Buffer) {
+	buf.WriteString(fmt.Sprintf("%d-", m["rule_number"].(int)))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(m["cidr_block"].(string))))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(m["direction"].(string))))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(m["rule_action"].(string))))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(m["protocol"].(string))))
+	buf.WriteString(fmt.Sprintf("%d-", m["icmp_type"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["icmp_code"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["port_range_from"].(int)))
+	buf.WriteString(fmt.Sprintf("%d-", m["port_range_to"].(int)))
+	return buf
+}
+
+func securityGroupEntryHash(v interface{}) int {
+	if v == nil {
+		return hashcode.String("")
+	}
+	m := v.(map[string]interface{})
+	buf := securityGroupEntryHashBase(m, false)
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(m["description"].(string))))
+	return hashcode.String(buf.String())
+}
+
+func securityGroupEntrySimpleHash(v interface{}) int {
+	if v == nil {
+		return hashcode.String("")
+	}
+	buf := securityGroupEntryHashBase(v, false)
+	return hashcode.String(buf.String())
+}
+func securityGroupEntrySimpleHashWithHump(v interface{}) int {
+	if v == nil {
+		return hashcode.String("")
+	}
+	buf := securityGroupEntryHashBase(v, true)
+	return hashcode.String(buf.String())
+}
+
+func securityGroupEntryHashBase(v interface{}, isHump bool) (buf bytes.Buffer) {
+	strField := []string{
+		"protocol",
+		"direction",
+		"cidr_block",
+	}
+	logger.Debug(logger.RespFormat, "Demo", v)
+	protocol := ""
+	if m, ok1 := v.(map[string]interface{}); ok1 {
+		for _, s := range strField {
+			if !isHump {
+				if _, ok := m[s]; ok {
+					buf.WriteString(fmt.Sprintf("%s:", strings.ToLower(m[s].(string))))
+				}
+				protocol = strings.ToLower(m["protocol"].(string))
+			} else {
+				if _, ok := m[Downline2Hump(s)]; ok {
+					buf.WriteString(fmt.Sprintf("%s:", strings.ToLower(m[Downline2Hump(s)].(string))))
+				}
+				protocol = strings.ToLower(m["Protocol"].(string))
+			}
+		}
+		intField := generateEntryField(protocol)
+		for _, s := range intField {
+			if !isHump {
+				if _, ok := m[s]; ok {
+					buf.WriteString(fmt.Sprintf("%d:", int64(m[s].(int))))
+				}
+			} else {
+				if _, ok := m[Downline2Hump(s)]; ok {
+					buf.WriteString(fmt.Sprintf("%d:", int64(m[Downline2Hump(s)].(float64))))
+				}
+			}
+		}
+	} else if d, ok2 := v.(*schema.ResourceData); ok2 {
+		for _, s := range strField {
+			if _, ok := d.GetOk(s); ok {
+				buf.WriteString(fmt.Sprintf("%s:", strings.ToLower(d.Get(s).(string))))
+			}
+			protocol = strings.ToLower(d.Get("protocol").(string))
+		}
+		intField := generateEntryField(protocol)
+		for _, s := range intField {
+			if _, ok := d.GetOk(s); ok {
+				buf.WriteString(fmt.Sprintf("%d:", int64(d.Get(s).(int))))
+			}
+		}
+	}
+	return buf
+}
+
+func generateEntryField(protocol string) (fields []string) {
+	if protocol == "icmp" {
+		fields = []string{
+			"icmp_type",
+			"icmp_code",
+		}
+	} else if protocol == "tcp" || protocol == "udp" {
+		fields = []string{
+			"port_range_from",
+			"port_range_to",
+		}
+	}
+	return fields
 }

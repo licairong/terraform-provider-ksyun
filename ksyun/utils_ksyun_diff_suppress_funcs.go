@@ -63,3 +63,23 @@ func kcsSecurityGroupDiffSuppressFunc(k, old, new string, d *schema.ResourceData
 	}
 	return false
 }
+
+func networkAclEntryDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	if d.Get("protocol") != "icmp" && (k == "icmp_type" || k == "icmp_code") {
+		return true
+	}
+	if d.Get("protocol") != "tcp" && d.Get("protocol") != "udp" && (k == "port_range_from" || k == "port_range_to") {
+		return true
+	}
+	return false
+}
+
+func securityGroupEntryDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	if d.Get("protocol") != "icmp" && (k == "icmp_type" || k == "icmp_code") {
+		return true
+	}
+	if d.Get("protocol") != "tcp" && d.Get("protocol") != "udp" && (k == "port_range_from" || k == "port_range_to") {
+		return true
+	}
+	return false
+}
