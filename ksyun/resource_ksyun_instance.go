@@ -265,7 +265,7 @@ func resourceKsyunInstance() *schema.Resource {
 			"force_delete": {
 				Type:       schema.TypeBool,
 				Optional:   true,
-				Default:    true,
+				Default:    false,
 				Deprecated: "this field is Deprecated and no effect for change",
 			},
 

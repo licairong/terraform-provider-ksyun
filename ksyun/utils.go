@@ -759,10 +759,7 @@ func SdkSliceMapping(d *schema.ResourceData, result interface{}, sdkSliceData Sd
 
 		if d != nil && sdkSliceData.TargetName != "" {
 			d.SetId(hashStringArray(ids))
-			err = d.Set("total_count", length)
-			if err != nil {
-				return nil, nil, err
-			}
+			_ = d.Set("total_count", length)
 			err = d.Set(sdkSliceData.TargetName, data)
 			if err != nil {
 				return nil, nil, err
