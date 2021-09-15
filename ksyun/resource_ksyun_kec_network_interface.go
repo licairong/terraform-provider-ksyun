@@ -73,5 +73,5 @@ func resourceKecNetworkInterfaceRead(d *schema.ResourceData, meta interface{}) (
 
 func resourceKecNetworkInterfaceDelete(d *schema.ResourceData, meta interface{}) (err error) {
 	vpcService := VpcService{meta.(*KsyunClient)}
-	return vpcService.removeNetworkInterface(d)
+	return vpcService.RemoveNetworkInterface(d)
 }

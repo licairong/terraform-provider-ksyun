@@ -1,7 +1,6 @@
 package ksyun
 
 import (
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
@@ -48,6 +47,14 @@ func dataSourceKsyunSecurityGroups() *schema.Resource {
 							Computed: true,
 						},
 						"security_group_name": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"name": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"id": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
@@ -110,51 +117,7 @@ func dataSourceKsyunSecurityGroups() *schema.Resource {
 	}
 }
 
-func dataSourceKsyunSecurityGroupsRead(d *schema.ResourceData, m interface{}) error {
-	conn := m.(*KsyunClient).vpcconn
-	req := make(map[string]interface{})
-	var SecurityGroups []string
-	if ids, ok := d.GetOk("ids"); ok {
-		SecurityGroups = SchemaSetToStringSlice(ids)
-	}
-	for k, v := range SecurityGroups {
-		if v == "" {
-			continue
-		}
-		req[fmt.Sprintf("SecurityGroupId.%d", k+1)] = v
-	}
-	filters := []string{"vpc_id"}
-	req = *SchemaSetsToFilterMap(d, filters, &req)
-	var allSecurityGroups []interface{}
-
-	resp, err := conn.DescribeSecurityGroups(&req)
-	if err != nil {
-		return fmt.Errorf("error on reading SecurityGroup list req(%v):%v", req, err)
-	}
-	itemSet, ok := (*resp)["SecurityGroupSet"]
-	if !ok {
-		return fmt.Errorf("error on reading SecurityGroup set")
-
-	}
-	items, ok := itemSet.([]interface{})
-	if !ok {
-		return nil
-	}
-	if items == nil || len(items) < 1 {
-		return nil
-	}
-	allSecurityGroups = append(allSecurityGroups, items...)
-	datas := GetSubSliceDByRep(allSecurityGroups, vpcSecurityGroupKeys)
-	for k, v := range datas {
-		securitySet := v["security_group_entry_set"]
-		if securitySets, ok := securitySet.([]interface{}); ok {
-			securitys := GetSubSliceDByRep(securitySets, vpcSecurityGroupEntrySetKeys)
-			datas[k]["security_group_entry_set"] = securitys
-		}
-	}
-	err = dataSourceKscSave(d, "security_groups", SecurityGroups, datas)
-	if err != nil {
-		return fmt.Errorf("error on save SecurityGroup list, %s", err)
-	}
-	return nil
+func dataSourceKsyunSecurityGroupsRead(d *schema.ResourceData, meta interface{}) error {
+	vpcService := VpcService{meta.(*KsyunClient)}
+	return vpcService.ReadAndSetSecurityGroups(d,dataSourceKsyunSecurityGroups())
 }

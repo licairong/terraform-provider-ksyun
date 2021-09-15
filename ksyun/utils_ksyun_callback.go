@@ -5,7 +5,7 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
-type apiCall struct {
+type ApiCall struct {
 	param       *map[string]interface{}
 	action      string
 	beforeCall  beforeCallFunc
@@ -15,10 +15,10 @@ type apiCall struct {
 }
 
 type ksyunApiCallFunc func(d *schema.ResourceData, meta interface{}) error
-type callErrorFunc func(d *schema.ResourceData, client *KsyunClient, call apiCall, baseErr error) error
-type executeCallFunc func(d *schema.ResourceData, client *KsyunClient, call apiCall) (*map[string]interface{}, error)
-type afterCallFunc func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call apiCall) error
-type beforeCallFunc func(d *schema.ResourceData, client *KsyunClient, call apiCall) (bool, error)
+type callErrorFunc func(d *schema.ResourceData, client *KsyunClient, call ApiCall, baseErr error) error
+type executeCallFunc func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (*map[string]interface{}, error)
+type afterCallFunc func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) error
+type beforeCallFunc func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (bool, error)
 
 func ksyunApiCall(api []ksyunApiCallFunc, d *schema.ResourceData, meta interface{}) (err error) {
 	if api != nil {
@@ -34,7 +34,7 @@ func ksyunApiCall(api []ksyunApiCallFunc, d *schema.ResourceData, meta interface
 	return err
 }
 
-func ksyunApiCallNew(api []apiCall, d *schema.ResourceData, client *KsyunClient, isDryRun bool) (err error) {
+func ksyunApiCallNew(api []ApiCall, d *schema.ResourceData, client *KsyunClient, isDryRun bool) (err error) {
 	if api != nil {
 		for _, f := range api {
 			if f.executeCall != nil {

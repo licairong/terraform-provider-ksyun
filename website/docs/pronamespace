@@ -40,4 +40,12 @@ scaling_group:             kec,
 scaling_instance:          kec,
 scaling_notification:      kec,
 scaling_policy:            kec,
-scaling_scheduled_task:    kec
+scaling_scheduled_task:    kec,
+vpn_gateway:               vpc,
+vpn_customer_gateway:      vpc,
+vpn_tunnel:                vpc,
+network_acl:               vpc,
+network_acl_associate:     vpc,
+network_acl_entry:         vpc,
+rabbitmq_instance:         kcs,
+rabbitmq_security_rule:    kcs
