@@ -2,11 +2,13 @@ package ksyun
 
 import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
-func dataSourceKsyunSecurityGroups() *schema.Resource {
+func dataSourceKsyunNetworkAcls() *schema.Resource {
 	return &schema.Resource{
-		Read: dataSourceKsyunSecurityGroupsRead,
+		Read: dataSourceKsyunNetworkAclsRead,
+
 		Schema: map[string]*schema.Schema{
 			"ids": {
 				Type:     schema.TypeSet,
@@ -15,6 +17,21 @@ func dataSourceKsyunSecurityGroups() *schema.Resource {
 					Type: schema.TypeString,
 				},
 				Set: schema.HashString,
+			},
+
+			"vpc_ids": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Set: schema.HashString,
+			},
+
+			"name_regex": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ValidateFunc: validation.StringIsValidRegExp,
 			},
 
 			"output_file": {
@@ -26,56 +43,56 @@ func dataSourceKsyunSecurityGroups() *schema.Resource {
 				Type:     schema.TypeInt,
 				Computed: true,
 			},
-			"vpc_id": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-			},
-			"security_groups": {
+			"network_acls": {
 				Type:     schema.TypeList,
 				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"create_time": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"vpc_id": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"security_group_name": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"name": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
 						"id": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
-						"security_group_id": {
+
+						"network_acl_id": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
-						"security_group_type": {
+
+						"vpc_id": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
-						"security_group_entry_set": {
+
+						"name": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+
+						"network_acl_name": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+
+						"create_time": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+
+						"network_acl_entry_set": {
 							Type:     schema.TypeList,
 							Computed: true,
+							Optional: true,
 							Elem: &schema.Resource{
 								Schema: map[string]*schema.Schema{
 									"description": {
 										Type:     schema.TypeString,
 										Computed: true,
 									},
-									"security_group_entry_id": {
+									"network_acl_id": {
+										Type:     schema.TypeString,
+										Computed: true,
+									},
+									"network_acl_entry_id": {
 										Type:     schema.TypeString,
 										Computed: true,
 									},
@@ -83,7 +100,15 @@ func dataSourceKsyunSecurityGroups() *schema.Resource {
 										Type:     schema.TypeString,
 										Computed: true,
 									},
+									"rule_number": {
+										Type:     schema.TypeInt,
+										Computed: true,
+									},
 									"direction": {
+										Type:     schema.TypeString,
+										Computed: true,
+									},
+									"rule_action": {
 										Type:     schema.TypeString,
 										Computed: true,
 									},
@@ -116,8 +141,7 @@ func dataSourceKsyunSecurityGroups() *schema.Resource {
 		},
 	}
 }
-
-func dataSourceKsyunSecurityGroupsRead(d *schema.ResourceData, meta interface{}) error {
+func dataSourceKsyunNetworkAclsRead(d *schema.ResourceData, meta interface{}) error {
 	vpcService := VpcService{meta.(*KsyunClient)}
-	return vpcService.ReadAndSetSecurityGroups(d,dataSourceKsyunSecurityGroups())
+	return vpcService.ReadAndSetNetworkAcls(d,dataSourceKsyunNetworkAcls())
 }

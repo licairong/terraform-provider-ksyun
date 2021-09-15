@@ -5,9 +5,9 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
-func dataSourceKsyunVpcs() *schema.Resource {
+func dataSourceKsyunVpnCustomerGateways() *schema.Resource {
 	return &schema.Resource{
-		Read: dataSourceKsyunVpcsRead,
+		Read: dataSourceKsyunVpnCustomerGatewaysRead,
 
 		Schema: map[string]*schema.Schema{
 			"ids": {
@@ -34,7 +34,7 @@ func dataSourceKsyunVpcs() *schema.Resource {
 				Type:     schema.TypeInt,
 				Computed: true,
 			},
-			"vpcs": {
+			"customer_gateways": {
 				Type:     schema.TypeList,
 				Computed: true,
 				Elem: &schema.Resource{
@@ -44,7 +44,7 @@ func dataSourceKsyunVpcs() *schema.Resource {
 							Computed: true,
 						},
 
-						"vpc_id": {
+						"customer_gateway_id": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
@@ -54,12 +54,17 @@ func dataSourceKsyunVpcs() *schema.Resource {
 							Computed: true,
 						},
 
-						"vpc_name": {
+						"customer_gateway_name": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
 
-						"cidr_block": {
+						"customer_gateway_address": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+
+						"ha_customer_gateway_address": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
@@ -74,8 +79,7 @@ func dataSourceKsyunVpcs() *schema.Resource {
 		},
 	}
 }
-func dataSourceKsyunVpcsRead(d *schema.ResourceData, meta interface{}) error {
+func dataSourceKsyunVpnCustomerGatewaysRead(d *schema.ResourceData, meta interface{}) error {
 	vpcService := VpcService{meta.(*KsyunClient)}
-	return vpcService.ReadAndSetVpcs(d,dataSourceKsyunVpcs())
+	return vpcService.ReadAndSetVpnCustomerGateways(d,dataSourceKsyunVpnCustomerGateways())
 }
-

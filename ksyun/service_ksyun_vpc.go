@@ -220,6 +220,40 @@ func (s *VpcService) ReadAndSetVpc(d *schema.ResourceData, r *schema.Resource) (
 	return err
 }
 
+func (s *VpcService) ReadAndSetVpcs(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "VpcId",
+			Type:    TransformWithN,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadVpcs(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		nameField:   "VpcName",
+		idFiled:     "VpcId",
+		targetField: "vpcs",
+		extra: map[string]SdkResponseMapping{
+			"VpcName": {
+				Field:    "name",
+				KeepAuto: true,
+			},
+			"VpcId": {
+				Field:    "id",
+				KeepAuto: true,
+			},
+		},
+	})
+}
+
 func (s *VpcService) CreateVpcCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
 	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
 	if err != nil {
@@ -407,6 +441,60 @@ func (s *VpcService) ReadAndSetSubnet(d *schema.ResourceData, r *schema.Resource
 	}
 	SdkResponseAutoResourceData(d, r, data, extra)
 	return err
+}
+
+func (s *VpcService) ReadAndSetSubnets(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "SubnetId",
+			Type:    TransformWithN,
+		},
+		"vpc_ids": {
+			mapping: "vpc-id",
+			Type:    TransformWithFilter,
+		},
+		"subnet_types": {
+			mapping: "subnet-type",
+			Type:    TransformWithFilter,
+		},
+		"nat_ids": {
+			mapping: "nat-id",
+			Type:    TransformWithFilter,
+		},
+		"network_acl_ids": {
+			mapping: "network-acl-id",
+			Type:    TransformWithFilter,
+		},
+		"availability_zone_names": {
+			mapping: "availability-zone-name",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	logger.Debug(logger.ReqFormat, "Demo", req)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadSubnets(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		nameField:   "SubnetName",
+		idFiled:     "SubnetId",
+		targetField: "subnets",
+		extra: map[string]SdkResponseMapping{
+			"SubnetName": {
+				Field: "name",
+			},
+			"SubnetId": {
+				Field:    "id",
+				KeepAuto: true,
+			},
+		},
+	})
 }
 
 func (s *VpcService) CreateSubnetCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
@@ -610,6 +698,43 @@ func (s *VpcService) ReadAndSetRoute(d *schema.ResourceData, r *schema.Resource)
 	return err
 }
 
+func (s *VpcService) ReadAndSetRoutes(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "RouteId",
+			Type:    TransformWithN,
+		},
+		"vpc_ids": {
+			mapping: "vpc-id",
+			Type:    TransformWithFilter,
+		},
+		"instance_ids": {
+			mapping: "instance-id",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadRoutes(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		idFiled:     "RouteId",
+		targetField: "routes",
+		extra: map[string]SdkResponseMapping{
+			"RouteId": {
+				Field:    "id",
+				KeepAuto: true,
+			},
+		},
+	})
+}
+
 func (s *VpcService) CreateRouteCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
 	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
 	if err != nil {
@@ -781,6 +906,44 @@ func (s *VpcService) ReadNat(d *schema.ResourceData, natId string) (data map[str
 		return data, fmt.Errorf("Nat %s not exist ", natId)
 	}
 	return data, err
+}
+
+func (s *VpcService) ReadAndSetNats(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "NatId",
+			Type:    TransformWithN,
+		},
+		"project_ids": {
+			mapping: "ProjectId",
+			Type:    TransformWithN,
+		},
+		"vpc_ids": {
+			mapping: "vpc-id",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadNats(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		nameField:   "NatName",
+		idFiled:     "NatId",
+		targetField: "nats",
+		extra: map[string]SdkResponseMapping{
+			"NatId": {
+				Field:    "id",
+				KeepAuto: false,
+			},
+		},
+	})
 }
 
 func (s *VpcService) ReadAndSetNat(d *schema.ResourceData, r *schema.Resource) (err error) {
@@ -1131,6 +1294,44 @@ func (s *VpcService) ReadNetworkAclAssociate(d *schema.ResourceData, networkAclI
 		return data, fmt.Errorf("network acl %s not associate sunbet %s", networkAclId, subnetId)
 	}
 	return data, err
+}
+
+func (s *VpcService) ReadAndSetNetworkAcls(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "NetworkAclId",
+			Type:    TransformWithN,
+		},
+		"vpc_ids": {
+			mapping: "vpc-id",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadNetworkAcls(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		nameField:   "NetworkAclName",
+		idFiled:     "NetworkAclId",
+		targetField: "network_acls",
+		extra: map[string]SdkResponseMapping{
+			"NetworkAclId": {
+				Field:    "id",
+				KeepAuto: true,
+			},
+			"NetworkAclName": {
+				Field:    "name",
+				KeepAuto: true,
+			},
+		},
+	})
 }
 
 func (s *VpcService) ReadAndSetNetworkAcl(d *schema.ResourceData, r *schema.Resource) (err error) {
@@ -1768,6 +1969,44 @@ func (s *VpcService) ReadSecurityGroupEntry(d *schema.ResourceData, securityGrou
 	return data, err
 }
 
+func (s *VpcService) ReadAndSetSecurityGroups(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "SecurityGroupId",
+			Type:    TransformWithN,
+		},
+		"vpc_id": {
+			mapping: "vpc-id",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadSecurityGroups(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		nameField:   "SecurityGroupName",
+		idFiled:     "SecurityGroupId",
+		targetField: "security_groups",
+		extra: map[string]SdkResponseMapping{
+			"SecurityGroupId": {
+				Field:    "id",
+				KeepAuto: true,
+			},
+			"SecurityGroupName": {
+				Field:    "name",
+				KeepAuto: true,
+			},
+		},
+	})
+}
+
 func (s *VpcService) ReadAndSetSecurityGroup(d *schema.ResourceData, r *schema.Resource) (err error) {
 	data, err := s.ReadSecurityGroup(d, "")
 	if err != nil {
@@ -2300,6 +2539,48 @@ func (s *VpcService) ReadAndSetVpnGateway(d *schema.ResourceData, r *schema.Reso
 	})
 }
 
+func (s *VpcService) ReadAndSetVpnGateways(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "VpnGatewayId",
+			Type:    TransformWithN,
+		},
+		"project_ids": {
+			mapping: "ProjectId",
+			Type:    TransformWithN,
+		},
+		"vpc_ids": {
+			mapping: "vpc-id",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadVpnGateways(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		nameField:   "VpnGatewayName",
+		idFiled:     "VpnGatewayId",
+		targetField: "vpn_gateways",
+		extra: map[string]SdkResponseMapping{
+			"VpnGatewayId": {
+				Field:    "id",
+				KeepAuto: true,
+			},
+			"VpnGatewayName": {
+				Field:    "name",
+				KeepAuto: true,
+			},
+		},
+	})
+}
+
 func (s *VpcService) CreateVpnGatewayCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
 	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
 	if err != nil {
@@ -2487,6 +2768,40 @@ func (s *VpcService) ReadAndSetVpnCustomerGateway(d *schema.ResourceData, r *sch
 	}
 	SdkResponseAutoResourceData(d, r, data, nil)
 	return err
+}
+
+func (s *VpcService) ReadAndSetVpnCustomerGateways(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "CustomerGatewayId",
+			Type:    TransformWithN,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadVpnCustomerGateways(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		nameField:   "CustomerGatewayName",
+		idFiled:     "CustomerGatewayId",
+		targetField: "customer_gateways",
+		extra: map[string]SdkResponseMapping{
+			"CustomerGatewayId": {
+				Field:    "id",
+				KeepAuto: true,
+			},
+			"CustomerGatewayName": {
+				Field:    "name",
+				KeepAuto: true,
+			},
+		},
+	})
 }
 
 func (s *VpcService) CreateVpnCustomerGatewayCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
@@ -2690,6 +3005,51 @@ func (s *VpcService) ReadAndSetVpnTunnel(d *schema.ResourceData, r *schema.Resou
 	return err
 }
 
+func (s *VpcService) ReadAndSetVpnTunnels(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "VpnTunnelId",
+			Type:    TransformWithN,
+		},
+		"vpn_gateway_ids": {
+			mapping: "vpn-gateway-id",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadVpnTunnels(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		nameField:   "VpnTunnelName",
+		idFiled:     "VpnTunnelId",
+		targetField: "vpn_tunnels",
+		extra: map[string]SdkResponseMapping{
+			"VpnTunnelId": {
+				Field:    "id",
+				KeepAuto: true,
+			},
+			"VpnTunnelName": {
+				Field:    "name",
+				KeepAuto: true,
+			},
+			"IkeDHGroup": {
+				Field: "ike_dh_group",
+				FieldRespFunc: func(i interface{}) interface{} {
+					result, _ := strconv.Atoi(i.(string))
+					return result
+				},
+			},
+		},
+	})
+}
+
 func (s *VpcService) CreateVpnTunnelCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
 	transform := map[string]SdkReqTransform{
 		"ike_dh_group": {
@@ -2834,4 +3194,43 @@ func (s *VpcService) RemoveVpnTunnel(d *schema.ResourceData) (err error) {
 		return err
 	}
 	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+}
+
+func (s *VpcService) ReadAvailabilityZones(condition map[string]interface{}) (data []interface{}, err error) {
+	var (
+		resp    *map[string]interface{}
+		results interface{}
+	)
+	conn := s.client.vpcconn
+	action := "DescribeAvailabilityZones"
+	logger.Debug(logger.ReqFormat, action, condition)
+	resp, err = conn.DescribeAvailabilityZones(nil)
+	if err != nil {
+		return data, err
+	}
+
+	results, err = getSdkValue("AvailabilityZoneInfo", *resp)
+	if err != nil {
+		return data, err
+	}
+	data = results.([]interface{})
+	return data, err
+}
+
+func (s *VpcService) ReadAndSetAvailabilityZones(d *schema.ResourceData, r *schema.Resource) (err error) {
+	req, err := mergeDataSourcesReq(d, r, nil)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadAvailabilityZones(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		nameField:   "AvailabilityZoneName",
+		idFiled:     "AvailabilityZoneName",
+		targetField: "availability_zones",
+	})
 }

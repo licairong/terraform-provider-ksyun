@@ -5,11 +5,21 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
-func dataSourceKsyunSubnets() *schema.Resource {
+func dataSourceKsyunVpnTunnels() *schema.Resource {
 	return &schema.Resource{
-		Read: dataSourceKsyunSubnetsRead,
+		Read: dataSourceKsyunVpnTunnelsRead,
+
 		Schema: map[string]*schema.Schema{
 			"ids": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Set: schema.HashString,
+			},
+
+			"vpn_gateway_ids": {
 				Type:     schema.TypeSet,
 				Optional: true,
 				Elem: &schema.Schema{
@@ -21,52 +31,7 @@ func dataSourceKsyunSubnets() *schema.Resource {
 			"name_regex": {
 				Type:         schema.TypeString,
 				Optional:     true,
-				ValidateFunc: validation.ValidateRegexp,
-			},
-
-			"vpc_ids": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-				Set: schema.HashString,
-			},
-
-			"nat_ids": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-				Set: schema.HashString,
-			},
-
-			"network_acl_ids": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-				Set: schema.HashString,
-			},
-
-			"availability_zone_names": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-				Set: schema.HashString,
-			},
-
-			"subnet_types": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-				Set: schema.HashString,
+				ValidateFunc: validation.StringIsValidRegExp,
 			},
 
 			"output_file": {
@@ -78,7 +43,7 @@ func dataSourceKsyunSubnets() *schema.Resource {
 				Type:     schema.TypeInt,
 				Computed: true,
 			},
-			"subnets": {
+			"vpn_tunnels": {
 				Type:     schema.TypeList,
 				Computed: true,
 				Elem: &schema.Resource{
@@ -88,7 +53,47 @@ func dataSourceKsyunSubnets() *schema.Resource {
 							Computed: true,
 						},
 
-						"subnet_id": {
+						"vpn_tunnel_id": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+
+						"state": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+
+						"type": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+
+						"vpn_gre_ip": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+
+						"customer_gre_ip": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+
+						"ha_vpn_gre_ip": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+
+						"ha_customer_gre_ip": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+
+						"vpn_gateway_id": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+
+						"customer_gateway_id": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
@@ -98,66 +103,66 @@ func dataSourceKsyunSubnets() *schema.Resource {
 							Computed: true,
 						},
 
-						"cidr_block": {
+						"vpn_tunnel_name": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
 
-						"vpc_id": {
+						"pre_shared_key": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
 
-						"subnet_type": {
+						"ike_authen_algorithm": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
 
-						"dhcp_ip_from": {
+						"ike_dh_group": {
+							Type:     schema.TypeInt,
+							Computed: true,
+						},
+
+						"ike_encry_algorithm": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
 
-						"dhcp_ip_to": {
+						"ipsec_encry_algorithm": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
 
-						"gateway_ip": {
+						"ipsec_authen_algorithm": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
 
-						"dns1": {
-							Type:     schema.TypeString,
+						"ipsec_life_time_traffic": {
+							Type:     schema.TypeInt,
 							Computed: true,
 						},
 
-						"dns2": {
-							Type:     schema.TypeString,
+						"ipsec_life_time_second": {
+							Type:     schema.TypeInt,
 							Computed: true,
 						},
 
-						"network_acl_id": {
-							Type:     schema.TypeString,
+						"extra_cidr_set": {
+							Type:     schema.TypeList,
 							Computed: true,
-						},
-
-						"nat_id": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-
-						"availability_zone_name": {
-							Type:     schema.TypeString,
-							Computed: true,
+							Optional: true,
+							Elem: &schema.Resource{
+								Schema: map[string]*schema.Schema{
+									"cidr_block": {
+										Type:     schema.TypeString,
+										Computed: true,
+									},
+								},
+							},
 						},
 
 						"create_time": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"availble_i_p_number": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
@@ -167,8 +172,7 @@ func dataSourceKsyunSubnets() *schema.Resource {
 		},
 	}
 }
-
-func dataSourceKsyunSubnetsRead(d *schema.ResourceData, meta interface{}) error {
+func dataSourceKsyunVpnTunnelsRead(d *schema.ResourceData, meta interface{}) error {
 	vpcService := VpcService{meta.(*KsyunClient)}
-	return vpcService.ReadAndSetSubnets(d,dataSourceKsyunSubnets())
+	return vpcService.ReadAndSetVpnTunnels(d,dataSourceKsyunVpnTunnels())
 }

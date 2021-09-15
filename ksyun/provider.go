@@ -46,6 +46,7 @@ func Provider() terraform.ResourceProvider {
 			"ksyun_lb_acls":                       dataSourceKsyunSlbAcls(),
 			"ksyun_availability_zones":            dataSourceKsyunAvailabilityZones(),
 			"ksyun_network_interfaces":            dataSourceKsyunNetworkInterfaces(),
+			"ksyun_network_acls":                  dataSourceKsyunNetworkAcls(),
 			"ksyun_vpcs":                          dataSourceKsyunVpcs(),
 			"ksyun_subnets":                       dataSourceKsyunSubnets(),
 			"ksyun_subnet_available_addresses":    dataSourceKsyunSubnetAvailableAddresses(),
@@ -77,6 +78,9 @@ func Provider() terraform.ResourceProvider {
 			"ksyun_scaling_scheduled_tasks":     dataSourceKsyunScalingScheduledTasks(),
 			"ksyun_scaling_notifications":       dataSourceKsyunScalingNotifications(),
 			"ksyun_rabbitmqs":                   dataSourceKsyunRabbitmqs(),
+			"ksyun_vpn_gateways":                dataSourceKsyunVpnGateways(),
+			"ksyun_vpn_customer_gateways":       dataSourceKsyunVpnCustomerGateways(),
+			"ksyun_vpn_tunnels":                 dataSourceKsyunVpnTunnels(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"ksyun_eip":                              resourceKsyunEip(),
