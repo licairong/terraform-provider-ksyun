@@ -51,10 +51,10 @@ func (s *BwsService) ReadBandWidthShare(d *schema.ResourceData, bwsId string) (d
 	req := map[string]interface{}{
 		"BandWidthShareId.1": bwsId,
 	}
-	//err = addProjectInfo(d, &req, s.client)
-	//if err != nil {
-	//	return data, err
-	//}
+	err = addProjectInfo(d, &req, s.client)
+	if err != nil {
+		return data, err
+	}
 	results, err = s.ReadBandWidthShares(req)
 	if err != nil {
 		return data, err
@@ -307,11 +307,11 @@ func (s *BwsService) ReadAndSetAssociateBandWidthShare(d *schema.ResourceData, r
 func (s *BwsService) AssociateBandWidthShareCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
 	//read eip
 	eipService := EipService{s.client}
-	eipData,err :=eipService.ReadAddress(d,d.Get("allocation_id").(string))
+	eipData, err := eipService.ReadAddress(d, d.Get("allocation_id").(string))
 	if err != nil {
 		return callback, err
 	}
-    bandWidth := eipData["BandWidth"]
+	bandWidth := eipData["BandWidth"]
 	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
 	if err != nil {
 		return callback, err
@@ -328,7 +328,7 @@ func (s *BwsService) AssociateBandWidthShareCall(d *schema.ResourceData, r *sche
 		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
 			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
 			d.SetId(d.Get("band_width_share_id").(string) + ":" + d.Get("allocation_id").(string))
-			return d.Set("band_width",bandWidth)
+			return d.Set("band_width", bandWidth)
 		},
 	}
 	return callback, err
@@ -347,9 +347,9 @@ func (s *BwsService) DisassociateBandWidthShareCall(d *schema.ResourceData) (cal
 		"BandWidthShareId": d.Get("band_width_share_id"),
 		"AllocationId":     d.Get("allocation_id"),
 	}
-	if d.Get("band_width") == 0{
+	if d.Get("band_width") == 0 {
 		removeReq["BandWidth"] = 1
-	}else{
+	} else {
 		removeReq["BandWidth"] = d.Get("band_width")
 	}
 	callback = ApiCall{
