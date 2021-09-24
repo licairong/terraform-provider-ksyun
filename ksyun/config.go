@@ -21,6 +21,7 @@ import (
 	"github.com/ks3sdklib/aws-sdk-go/aws"
 	"github.com/ks3sdklib/aws-sdk-go/aws/credentials"
 	"github.com/ks3sdklib/aws-sdk-go/service/s3"
+	"github.com/terraform-providers/terraform-provider-ksyun/logger"
 )
 
 // Config is the configuration of ksyun meta data
@@ -29,6 +30,8 @@ type Config struct {
 	SecretKey string
 	Region    string
 	Insecure  bool
+	Domain    string
+	DryRun    bool
 }
 
 // Client will returns a client with connections for all product
@@ -41,9 +44,12 @@ func (c *Config) Client() (*KsyunClient, error) {
 		Region: &c.Region,
 	}
 	url := &utils.UrlInfo{
-		UseSSL: false,
-		Locate: false,
+		UseSSL:         false,
+		Locate:         false,
+		CustomerDomain: c.Domain,
 	}
+	client.dryRun = c.DryRun
+	logger.Debug(logger.ReqFormat, "Demo", url)
 	client.vpcconn = vpc.SdkNew(cli, cfg, url)
 	client.eipconn = eip.SdkNew(cli, cfg, url)
 	client.slbconn = slb.SdkNew(cli, cfg, url)

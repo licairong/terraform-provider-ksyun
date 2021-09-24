@@ -77,13 +77,14 @@ func resourceKsyunNat() *schema.Resource {
 					"PostPaidByAdvanced95Peak",
 					"DailyPaidByTransfer",
 				}, false),
+				DiffSuppressFunc: chargeSchemaDiffSuppressFunc,
 			},
 
 			"purchase_time": {
 				Type:             schema.TypeInt,
 				ForceNew:         true,
 				Optional:         true,
-				ValidateFunc:     validation.IntBetween(1, 36),
+				ValidateFunc:     validation.IntBetween(0, 36),
 				DiffSuppressFunc: purchaseTimeDiffSuppressFunc,
 			},
 

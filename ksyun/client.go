@@ -1,6 +1,7 @@
 package ksyun
 
 import (
+	"github.com/KscSDK/ksc-sdk-go/service/bws"
 	"github.com/KscSDK/ksc-sdk-go/service/ebs"
 	"github.com/KscSDK/ksc-sdk-go/service/eip"
 	"github.com/KscSDK/ksc-sdk-go/service/epc"
@@ -21,6 +22,7 @@ import (
 
 type KsyunClient struct {
 	region        string
+	dryRun        bool
 	eipconn       *eip.Eip
 	slbconn       *slb.Slb
 	vpcconn       *vpc.Vpc
@@ -37,4 +39,5 @@ type KsyunClient struct {
 	ks3conn       *s3.S3
 	iamconn       *iam.Iam
 	rabbitmqconn  *rabbitmq.Rabbitmq
+	bwsconn       *bws.Bws
 }

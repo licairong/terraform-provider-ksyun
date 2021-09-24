@@ -69,11 +69,7 @@ func (s *VpcService) RemoveNetworkInterface(d *schema.ResourceData) (err error) 
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) RemoveNetworkInterfaceCall(d *schema.ResourceData) (callback ApiCall, err error) {
@@ -286,11 +282,7 @@ func (s *VpcService) CreateVpc(d *schema.ResourceData, r *schema.Resource) (err 
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ModifyVpcCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
@@ -323,11 +315,7 @@ func (s *VpcService) ModifyVpc(d *schema.ResourceData, r *schema.Resource) (err 
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) RemoveVpcCall(d *schema.ResourceData) (callback ApiCall, err error) {
@@ -373,11 +361,7 @@ func (s *VpcService) RemoveVpc(d *schema.ResourceData) (err error) {
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ReadSubnets(condition map[string]interface{}) (data []interface{}, err error) {
@@ -544,11 +528,7 @@ func (s *VpcService) CreateSubnet(d *schema.ResourceData, r *schema.Resource) (e
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ModifySubnetCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
@@ -581,11 +561,7 @@ func (s *VpcService) ModifySubnet(d *schema.ResourceData, r *schema.Resource) (e
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) RemoveSubnetCall(d *schema.ResourceData) (callback ApiCall, err error) {
@@ -631,11 +607,7 @@ func (s *VpcService) RemoveSubnet(d *schema.ResourceData) (err error) {
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ReadRoutes(condition map[string]interface{}) (data []interface{}, err error) {
@@ -796,11 +768,7 @@ func (s *VpcService) CreateRoute(d *schema.ResourceData, r *schema.Resource) (er
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) RemoveRouteCall(d *schema.ResourceData) (callback ApiCall, err error) {
@@ -846,11 +814,7 @@ func (s *VpcService) RemoveRoute(d *schema.ResourceData) (err error) {
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ReadNats(condition map[string]interface{}) (data []interface{}, err error) {
@@ -997,15 +961,14 @@ func (s *VpcService) CreateNat(d *schema.ResourceData, r *schema.Resource) (err 
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ModifyNatCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
-	req, err := SdkRequestAutoMapping(d, r, true, nil, nil)
+	transform := map[string]SdkReqTransform{
+		"project_id": {Ignore: true},
+	}
+	req, err := SdkRequestAutoMapping(d, r, true, transform, nil, SdkReqParameter{false})
 	if err != nil {
 		return callback, err
 	}
@@ -1029,16 +992,38 @@ func (s *VpcService) ModifyNatCall(d *schema.ResourceData, r *schema.Resource) (
 	return callback, err
 }
 
+func (s *VpcService) modifyNatProjectCall(d *schema.ResourceData, resource *schema.Resource) (callback ApiCall, err error) {
+	transform := map[string]SdkReqTransform{
+		"project_id": {},
+	}
+	updateReq, err := SdkRequestAutoMapping(d, resource, true, transform, nil)
+	if err != nil {
+		return callback, err
+	}
+	if len(updateReq) > 0 {
+		callback = ApiCall{
+			param: &updateReq,
+			executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+				return resp, ModifyProjectInstanceNew(d.Id(), call.param, client)
+			},
+			afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+				return err
+			},
+		}
+	}
+	return callback, err
+}
+
 func (s *VpcService) ModifyNat(d *schema.ResourceData, r *schema.Resource) (err error) {
+	projectCall, err := s.modifyNatProjectCall(d, r)
+	if err != nil {
+		return err
+	}
 	call, err := s.ModifyNatCall(d, r)
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{projectCall, call}, d, s.client, true)
 }
 
 func (s *VpcService) RemoveNatCall(d *schema.ResourceData) (callback ApiCall, err error) {
@@ -1084,11 +1069,7 @@ func (s *VpcService) RemoveNat(d *schema.ResourceData) (err error) {
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ReadNatAssociate(d *schema.ResourceData, natId string, subnetId string) (data map[string]interface{}, err error) {
@@ -1154,11 +1135,7 @@ func (s *VpcService) CreateNatAssociate(d *schema.ResourceData, r *schema.Resour
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) RemoveNatAssociateCall(d *schema.ResourceData, natId string, subnetId string) (callback ApiCall, err error) {
@@ -1205,11 +1182,7 @@ func (s *VpcService) RemoveNatAssociate(d *schema.ResourceData) (err error) {
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ReadNetworkAcls(condition map[string]interface{}) (data []interface{}, err error) {
@@ -1529,11 +1502,7 @@ func (s *VpcService) CreateNetworkAclEntry(d *schema.ResourceData, r *schema.Res
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) CreateNetworkAclAssociate(d *schema.ResourceData, r *schema.Resource) (err error) {
@@ -1541,11 +1510,7 @@ func (s *VpcService) CreateNetworkAclAssociate(d *schema.ResourceData, r *schema
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ModifyNetworkAclCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
@@ -1707,11 +1672,7 @@ func (s *VpcService) ModifyNetworkAcl(d *schema.ResourceData, r *schema.Resource
 	for _, entryCall := range entries {
 		callbacks = append(callbacks, entryCall)
 	}
-	err = ksyunApiCallNew(callbacks, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew(callbacks, d, s.client, false)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
 }
 
 func (s *VpcService) ModifyNetworkAclEntry(d *schema.ResourceData, r *schema.Resource) (err error) {
@@ -1721,11 +1682,7 @@ func (s *VpcService) ModifyNetworkAclEntry(d *schema.ResourceData, r *schema.Res
 		return err
 	}
 	callbacks = append(callbacks, call)
-	err = ksyunApiCallNew(callbacks, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew(callbacks, d, s.client, false)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
 }
 
 func (s *VpcService) RemoveNetworkAclCall(d *schema.ResourceData) (callback ApiCall, err error) {
@@ -1866,11 +1823,7 @@ func (s *VpcService) RemoveNetworkAcl(d *schema.ResourceData) (err error) {
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) RemoveNetworkAclEntry(d *schema.ResourceData) (err error) {
@@ -1878,11 +1831,7 @@ func (s *VpcService) RemoveNetworkAclEntry(d *schema.ResourceData) (err error) {
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) RemoveNetworkAclAssociate(d *schema.ResourceData) (err error) {
@@ -1890,11 +1839,7 @@ func (s *VpcService) RemoveNetworkAclAssociate(d *schema.ResourceData) (err erro
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ReadSecurityGroups(condition map[string]interface{}) (data []interface{}, err error) {
@@ -2162,11 +2107,7 @@ func (s *VpcService) CreateSecurityGroupEntry(d *schema.ResourceData, r *schema.
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ModifySecurityGroupCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
@@ -2328,11 +2269,7 @@ func (s *VpcService) ModifySecurityGroup(d *schema.ResourceData, r *schema.Resou
 	for _, entryCall := range entries {
 		callbacks = append(callbacks, entryCall)
 	}
-	err = ksyunApiCallNew(callbacks, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew(callbacks, d, s.client, false)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
 }
 
 func (s *VpcService) ModifySecurityGroupEntry(d *schema.ResourceData, r *schema.Resource) (err error) {
@@ -2342,11 +2279,7 @@ func (s *VpcService) ModifySecurityGroupEntry(d *schema.ResourceData, r *schema.
 		return err
 	}
 	callbacks = append(callbacks, call)
-	err = ksyunApiCallNew(callbacks, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew(callbacks, d, s.client, false)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
 }
 
 func (s *VpcService) RemoveSecurityGroupCall(d *schema.ResourceData) (callback ApiCall, err error) {
@@ -2446,11 +2379,7 @@ func (s *VpcService) RemoveSecurityGroup(d *schema.ResourceData) (err error) {
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) RemoveSecurityGroupEntry(d *schema.ResourceData) (err error) {
@@ -2458,11 +2387,7 @@ func (s *VpcService) RemoveSecurityGroupEntry(d *schema.ResourceData) (err error
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ReadVpnGateways(condition map[string]interface{}) (data []interface{}, err error) {
@@ -2616,11 +2541,7 @@ func (s *VpcService) CreateVpnGateway(d *schema.ResourceData, r *schema.Resource
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ModifyVpnGatewayCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
@@ -2653,11 +2574,7 @@ func (s *VpcService) ModifyVpnGateway(d *schema.ResourceData, r *schema.Resource
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) RemoveVpnGatewayCall(d *schema.ResourceData) (callback ApiCall, err error) {
@@ -2703,11 +2620,7 @@ func (s *VpcService) RemoveVpnGateway(d *schema.ResourceData) (err error) {
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ReadVpnCustomerGateways(condition map[string]interface{}) (data []interface{}, err error) {
@@ -2836,11 +2749,7 @@ func (s *VpcService) CreateVpnCustomerGateway(d *schema.ResourceData, r *schema.
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ModifyVpnCustomerGatewayCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
@@ -2873,11 +2782,7 @@ func (s *VpcService) ModifyVpnCustomerGateway(d *schema.ResourceData, r *schema.
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) RemoveVpnCustomerGatewayCall(d *schema.ResourceData) (callback ApiCall, err error) {
@@ -2923,11 +2828,7 @@ func (s *VpcService) RemoveVpnCustomerGateway(d *schema.ResourceData) (err error
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ReadVpnTunnels(condition map[string]interface{}) (data []interface{}, err error) {
@@ -3102,11 +3003,7 @@ func (s *VpcService) CreateVpnTunnel(d *schema.ResourceData, r *schema.Resource)
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ModifyVpnTunnelCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
@@ -3139,11 +3036,7 @@ func (s *VpcService) ModifyVpnTunnel(d *schema.ResourceData, r *schema.Resource)
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) RemoveVpnTunnelCall(d *schema.ResourceData) (callback ApiCall, err error) {
@@ -3189,11 +3082,7 @@ func (s *VpcService) RemoveVpnTunnel(d *schema.ResourceData) (err error) {
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *VpcService) ReadAvailabilityZones(condition map[string]interface{}) (data []interface{}, err error) {
