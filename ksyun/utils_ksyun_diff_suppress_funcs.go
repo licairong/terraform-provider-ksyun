@@ -12,6 +12,26 @@ func purchaseTimeDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bo
 	return true
 }
 
+func chargeSchemaDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	mappings := map[string]string{
+		"PostPaidByPeak":     "Peak",
+		"PostPaidByDay":      "Daily",
+		"PostPaidByTransfer": "TrafficMonthly",
+		"PrePaidByMonth":     "Monthly",
+		"Peak":               "PostPaidByPeak",
+		"Daily":              "PostPaidByDay",
+		"TrafficMonthly":     "PostPaidByTransfer",
+		"Monthly":            "PrePaidByMonth",
+	}
+	if old == new {
+		return true
+	}
+	if v, ok := mappings[old]; ok && v == new {
+		return true
+	}
+	return false
+}
+
 func kecImportDiffSuppress(k, old, new string, d *schema.ResourceData) bool {
 	//由于一些字段暂时无法支持从查询中返回 所以现在设立做特殊处理拦截变更 用来适配导入的场景 后续支持后在对导入场景做优化
 	if !d.IsNewResource() {

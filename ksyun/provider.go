@@ -31,7 +31,20 @@ func Provider() terraform.ResourceProvider {
 				Type:        schema.TypeBool,
 				Optional:    true,
 				Default:     true,
+				DefaultFunc: schema.EnvDefaultFunc("KSYUN_INSECURE", true),
 				Description: descriptions["insecure"],
+			},
+			"domain": {
+				Type:        schema.TypeString,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("KSYUN_DOMAIN", ""),
+				Description: descriptions["domain"],
+			},
+			"dry_run": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("KSYUN_DRY_RUN", false),
+				Description: descriptions["dry_run"],
 			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
@@ -139,6 +152,7 @@ func Provider() terraform.ResourceProvider {
 			"ksyun_vpn_gateway":                 resourceKsyunVpnGateway(),
 			"ksyun_vpn_customer_gateway":        resourceKsyunVpnCustomerGateway(),
 			"ksyun_vpn_tunnel":                  resourceKsyunVpnTunnel(),
+			//"ksyun_bws":                         resourceKsyunBandWidthShare(),
 		},
 		ConfigureFunc: providerConfigure,
 	}
@@ -150,6 +164,8 @@ func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 		SecretKey: d.Get("secret_key").(string),
 		Region:    d.Get("region").(string),
 		Insecure:  d.Get("insecure").(bool),
+		Domain:    d.Get("domain").(string),
+		DryRun:    d.Get("dry_run").(bool),
 	}
 	client, err := config.Client()
 	return client, err
@@ -163,5 +179,6 @@ func init() {
 		"secret_key": "sk",
 		"region":     "cn-beijing-6",
 		"insecure":   "true",
+		"domain":     "",
 	}
 }

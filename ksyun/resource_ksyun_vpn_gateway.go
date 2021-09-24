@@ -55,7 +55,7 @@ func resourceKsyunVpnGateway() *schema.Resource {
 				Type:             schema.TypeInt,
 				Optional:         true,
 				ForceNew:         true,
-				ValidateFunc:     validation.IntBetween(1, 36),
+				ValidateFunc:     validation.IntBetween(0, 36),
 				DiffSuppressFunc: purchaseTimeDiffSuppressFunc,
 			},
 

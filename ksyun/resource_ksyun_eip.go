@@ -2,11 +2,8 @@ package ksyun
 
 import (
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
-	"github.com/terraform-providers/terraform-provider-ksyun/logger"
-	"time"
 )
 
 func resourceKsyunEip() *schema.Resource {
@@ -22,7 +19,8 @@ func resourceKsyunEip() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"line_id": {
 				Type:     schema.TypeString,
-				Required: true,
+				Optional: true,
+				Computed: true,
 				ForceNew: true,
 			},
 			"band_width": {
@@ -47,11 +45,14 @@ func resourceKsyunEip() *schema.Resource {
 					"PostPaidByHour",
 					"HourlyInstantSettlement",
 				}, false),
+				DiffSuppressFunc: chargeSchemaDiffSuppressFunc,
 			},
 			"purchase_time": {
 				Type:             schema.TypeInt,
 				Optional:         true,
 				DiffSuppressFunc: purchaseTimeDiffSuppressFunc,
+				ForceNew:         true,
+				ValidateFunc:     validation.IntBetween(0, 36),
 			},
 			"project_id": {
 				Type:     schema.TypeString,
@@ -104,115 +105,39 @@ func resourceKsyunEip() *schema.Resource {
 		},
 	}
 }
-func resourceKsyunEipCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*KsyunClient)
-	conn := client.eipconn
-	r := resourceKsyunEip()
-
-	var resp *map[string]interface{}
-	var err error
-
-	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
+func resourceKsyunEipCreate(d *schema.ResourceData, meta interface{}) (err error) {
+	eipService := EipService{meta.(*KsyunClient)}
+	err = eipService.CreateAddress(d, resourceKsyunEip())
 	if err != nil {
-		return fmt.Errorf("error on creating Address, %s", err)
-	}
-	err = validatePurchaseTime(&req, "PurchaseTime", "ChargeType", []string{"PrePaidByMonth", "Monthly"})
-	if err != nil {
-		return fmt.Errorf("error on creating Address, %s", err)
-	}
-
-	action := "AllocateAddress"
-	logger.Debug(logger.ReqFormat, action, req)
-	resp, err = conn.AllocateAddress(&req)
-	if err != nil {
-		return fmt.Errorf("error on creating Address, %s", err)
-	}
-	if resp != nil {
-		d.SetId((*resp)["AllocationId"].(string))
+		return fmt.Errorf("error on creating address %q, %s", d.Id(), err)
 	}
 	return resourceKsyunEipRead(d, meta)
 }
 
-func resourceKsyunEipRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*KsyunClient)
-	conn := client.eipconn
-
-	req := make(map[string]interface{})
-	req["AllocationId.1"] = d.Id()
-	err := addProjectInfo(d, &req, client)
+func resourceKsyunEipRead(d *schema.ResourceData, meta interface{}) (err error) {
+	eipService := EipService{meta.(*KsyunClient)}
+	err = eipService.ReadAndSetAddress(d, resourceKsyunEip())
 	if err != nil {
-		return fmt.Errorf("error on reading Address %q, %s", d.Id(), err)
+		return fmt.Errorf("error on reading address %q, %s", d.Id(), err)
 	}
-	action := "DescribeAddresses"
-	logger.Debug(logger.ReqFormat, action, req)
-	resp, err := conn.DescribeAddresses(&req)
-	if err != nil {
-		return fmt.Errorf("error on reading Address %q, %s", d.Id(), err)
-	}
-	if resp != nil {
-		items, ok := (*resp)["AddressesSet"].([]interface{})
-		if !ok || len(items) == 0 {
-			d.SetId("")
-			return nil
-		}
-		SdkResponseAutoResourceData(d, resourceKsyunEip(), items[0], nil)
-	}
-	return nil
+	return err
 }
 
-func resourceKsyunEipUpdate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*KsyunClient)
-	conn := client.eipconn
-	r := resourceKsyunEip()
-
-	var err error
-
-	var only map[string]SdkReqTransform
-
-	only = map[string]SdkReqTransform{
-		"band_width": {},
-		"project_id": {},
-	}
-
-	req, err := SdkRequestAutoMapping(d, r, true, only, nil)
-	logger.Debug(logger.ReqFormat, "%%%%%%%%%%%%%%%%", &req)
+func resourceKsyunEipUpdate(d *schema.ResourceData, meta interface{}) (err error) {
+	eipService := EipService{meta.(*KsyunClient)}
+	err = eipService.ModifyAddress(d, resourceKsyunEip())
 	if err != nil {
-		return fmt.Errorf("error on modifying Address, %s", err)
-	}
-	err = ModifyProjectInstance(d.Id(), &req, meta)
-	if err != nil {
-		return fmt.Errorf("error on updating Eip, %s", err)
-	}
-	if len(req) > 0 {
-		req["AllocationId"] = d.Id()
-		action := "ModifyAddress"
-		logger.Debug(logger.ReqFormat, action, req)
-		_, err = conn.ModifyAddress(&req)
-		if err != nil {
-			return fmt.Errorf("error on modifying Address, %s", err)
-		}
+		return fmt.Errorf("error on updating address %q, %s", d.Id(), err)
 	}
 	return resourceKsyunEipRead(d, meta)
 }
 
-func resourceKsyunEipDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*KsyunClient)
-	conn := client.eipconn
-	req := make(map[string]interface{})
-	req["AllocationId"] = d.Id()
-	action := "ReleaseAddress"
-
-	return resource.Retry(25*time.Minute, func() *resource.RetryError {
-		logger.Debug(logger.ReqFormat, action, req)
-		resp, err1 := conn.ReleaseAddress(&req)
-		logger.Debug(logger.AllFormat, action, req, resp, err1)
-		if err1 == nil {
-			return nil
-		} else if notFoundError(err1) {
-			return nil
-		} else {
-			return resource.RetryableError(fmt.Errorf("error on  deleting Address %q, %s", d.Id(), err1))
-		}
-	})
+func resourceKsyunEipDelete(d *schema.ResourceData, meta interface{}) (err error) {
+	eipService := EipService{meta.(*KsyunClient)}
+	err = eipService.RemoveAddress(d)
+	if err != nil {
+		return fmt.Errorf("error on deleting address %q, %s", d.Id(), err)
+	}
+	return err
 
 }

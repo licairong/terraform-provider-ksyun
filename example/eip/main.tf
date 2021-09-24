@@ -1,15 +1,16 @@
 # Specify the provider and access details
-provider "ksyun" {
-  region = "cn-beijing-6"
-}
-data "ksyun_lines" "default" {
-  output_file="output_result1"
-  line_name="BGP"
-}
+//provider "ksyun" {
+//  region = "cn-beijing-6"
+//}
+//data "ksyun_lines" "default" {
+//  output_file="output_result1"
+//  line_name="BGP"
+//}
 
 # Create an eip
 resource "ksyun_eip" "default1" {
-  line_id ="${data.ksyun_lines.default.lines.0.line_id}"
-  band_width =2
-  charge_type = "PostPaidByDay"
+  band_width =4
+  charge_type = "Daily"
+  project_id = 0
+  purchase_time = 0
 }

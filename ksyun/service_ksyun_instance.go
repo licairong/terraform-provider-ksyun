@@ -314,13 +314,7 @@ func (s *KecService) modifyKecInstance(d *schema.ResourceData, resource *schema.
 		}
 		callbacks = append(callbacks, startCall)
 	}
-	//DryRun
-	err = ksyunApiCallNew(callbacks, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew(callbacks, d, s.client, false)
-	//return err
+	return ksyunApiCallNew(callbacks, d, s.client, true)
 }
 
 func (s *KecService) createKecInstanceCommon(d *schema.ResourceData, resource *schema.Resource) (callback ApiCall, err error) {
@@ -970,11 +964,7 @@ func (s *KecService) createNetworkInterface(d *schema.ResourceData, resource *sc
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *KecService) readAndSetNetworkInterface(d *schema.ResourceData, resource *schema.Resource) (err error) {
@@ -1074,11 +1064,7 @@ func (s *KecService) modifyNetworkInterface(d *schema.ResourceData, resource *sc
 		}
 		calls = append(calls, attrCall)
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *KecService) readAndSetNetworkInterfaceAttachment(d *schema.ResourceData, resource *schema.Resource) (err error) {
@@ -1132,11 +1118,7 @@ func (s *KecService) createNetworkInterfaceAttachment(d *schema.ResourceData, re
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
 func (s *KecService) modifyNetworkInterfaceAttachmentCall(d *schema.ResourceData, resource *schema.Resource) (callback ApiCall, err error) {
@@ -1166,9 +1148,5 @@ func (s *KecService) modifyNetworkInterfaceAttachment(d *schema.ResourceData, re
 	if err != nil {
 		return err
 	}
-	err = ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
-	if err != nil {
-		return err
-	}
-	return ksyunApiCallNew([]ApiCall{call}, d, s.client, false)
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
