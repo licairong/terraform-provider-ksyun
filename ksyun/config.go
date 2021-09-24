@@ -3,6 +3,7 @@ package ksyun
 import (
 	"github.com/KscSDK/ksc-sdk-go/ksc"
 	"github.com/KscSDK/ksc-sdk-go/ksc/utils"
+	"github.com/KscSDK/ksc-sdk-go/service/bws"
 	"github.com/KscSDK/ksc-sdk-go/service/ebs"
 	"github.com/KscSDK/ksc-sdk-go/service/eip"
 	"github.com/KscSDK/ksc-sdk-go/service/epc"
@@ -65,7 +66,8 @@ func (c *Config) Client() (*KsyunClient, error) {
 	client.mongodbconn = mongodb.SdkNew(cli, cfg, url)
 	client.iamconn = iam.SdkNew(cli, cfg, url)
 	client.rabbitmqconn = rabbitmq.SdkNew(cli, cfg, url)
-
+	client.bwsconn = bws.SdkNew(cli,cfg,url)
+	
 	credentials := credentials.NewStaticCredentials(c.AccessKey, c.SecretKey, "")
 	client.ks3conn = s3.New(&aws.Config{
 		Region:           "BEIJING",
