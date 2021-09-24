@@ -152,7 +152,8 @@ func Provider() terraform.ResourceProvider {
 			"ksyun_vpn_gateway":                 resourceKsyunVpnGateway(),
 			"ksyun_vpn_customer_gateway":        resourceKsyunVpnCustomerGateway(),
 			"ksyun_vpn_tunnel":                  resourceKsyunVpnTunnel(),
-			//"ksyun_bws":                         resourceKsyunBandWidthShare(),
+			"ksyun_bws":                         resourceKsyunBandWidthShare(),
+			"ksyun_bws_associate":               resourceKsyunBandWidthShareAssociate(),
 		},
 		ConfigureFunc: providerConfigure,
 	}
