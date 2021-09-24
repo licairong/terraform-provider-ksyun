@@ -8,10 +8,9 @@ cloud.google.com/go/internal/version
 cloud.google.com/go/storage
 # github.com/BurntSushi/toml v0.3.1
 github.com/BurntSushi/toml
-# github.com/KscSDK/ksc-sdk-go v0.1.33
+# github.com/KscSDK/ksc-sdk-go v0.1.35 => ../../KscSDK/ksc-sdk-go
 github.com/KscSDK/ksc-sdk-go/ksc
 github.com/KscSDK/ksc-sdk-go/ksc/kscbody
-github.com/KscSDK/ksc-sdk-go/ksc/kscjson
 github.com/KscSDK/ksc-sdk-go/ksc/kscquery
 github.com/KscSDK/ksc-sdk-go/ksc/utils
 github.com/KscSDK/ksc-sdk-go/service/bws
