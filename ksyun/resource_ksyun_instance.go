@@ -177,6 +177,7 @@ func resourceKsyunInstance() *schema.Resource {
 				Optional:         true,
 				ForceNew:         true,
 				DiffSuppressFunc: purchaseTimeDiffSuppressFunc,
+				ValidateFunc:     validation.IntBetween(0, 36),
 			},
 			"security_group_id": {
 				Type:     schema.TypeSet,

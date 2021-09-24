@@ -2,12 +2,8 @@ package ksyun
 
 import (
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
-	"github.com/terraform-providers/terraform-provider-ksyun/logger"
-	"strings"
-	"time"
 )
 
 func resourceKsyunEipAssociation() *schema.Resource {
@@ -16,7 +12,7 @@ func resourceKsyunEipAssociation() *schema.Resource {
 		Read:   resourceKsyunEipAssociationRead,
 		Delete: resourceKsyunEipAssociationDelete,
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			State: importAddressAssociate,
 		},
 
 		Schema: map[string]*schema.Schema{
@@ -91,72 +87,29 @@ func resourceKsyunEipAssociation() *schema.Resource {
 		},
 	}
 }
-func resourceKsyunEipAssociationCreate(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*KsyunClient)
-	conn := client.eipconn
-	r := resourceKsyunEipAssociation()
-
-	var err error
-
-	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
+func resourceKsyunEipAssociationCreate(d *schema.ResourceData, meta interface{}) (err error) {
+	eipService := EipService{meta.(*KsyunClient)}
+	err = eipService.CreateAddressAssociate(d, resourceKsyunEipAssociation())
 	if err != nil {
-		return fmt.Errorf("error on creating AssociateAddress, %s", err)
+		return fmt.Errorf("error on creating address association %q, %s", d.Id(), err)
 	}
-
-	action := "CreateScalingPolicy"
-	logger.Debug(logger.ReqFormat, action, req)
-	_, err = conn.AssociateAddress(&req)
-	if err != nil {
-		return fmt.Errorf("error on creating AssociateAddress, %s", err)
-	}
-	d.SetId(fmt.Sprintf("%s:%s", d.Get("allocation_id"), d.Get("instance_id")))
 	return resourceKsyunEipAssociationRead(d, meta)
 }
 
-func resourceKsyunEipAssociationRead(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*KsyunClient)
-	conn := client.eipconn
-
-	req := make(map[string]interface{})
-	req["AllocationId.1"] = strings.Split(d.Id(), ":")[0]
-	err := addProjectInfo(d, &req, client)
+func resourceKsyunEipAssociationRead(d *schema.ResourceData, meta interface{}) (err error) {
+	eipService := EipService{meta.(*KsyunClient)}
+	err = eipService.ReadAndSetAddressAssociate(d, resourceKsyunEipAssociation())
 	if err != nil {
-		return fmt.Errorf("error on reading Address %q, %s", d.Id(), err)
+		return fmt.Errorf("error on reading address association %q, %s", d.Id(), err)
 	}
-	action := "DescribeAddresses"
-	logger.Debug(logger.ReqFormat, action, req)
-	resp, err := conn.DescribeAddresses(&req)
-	if err != nil {
-		return fmt.Errorf("error on reading Address %q, %s", d.Id(), err)
-	}
-	if resp != nil {
-		items, ok := (*resp)["AddressesSet"].([]interface{})
-		if !ok || len(items) == 0 {
-			d.SetId("")
-			return nil
-		}
-		SdkResponseAutoResourceData(d, resourceKsyunEipAssociation(), items[0], nil)
-	}
-	return nil
+	return err
 }
 
-func resourceKsyunEipAssociationDelete(d *schema.ResourceData, meta interface{}) error {
-	client := meta.(*KsyunClient)
-	conn := client.eipconn
-	req := make(map[string]interface{})
-	req["AllocationId"] = strings.Split(d.Id(), ":")[0]
-	action := "DisassociateAddress"
-
-	return resource.Retry(25*time.Minute, func() *resource.RetryError {
-		logger.Debug(logger.ReqFormat, action, req)
-		resp, err1 := conn.DisassociateAddress(&req)
-		logger.Debug(logger.AllFormat, action, req, resp, err1)
-		if err1 == nil {
-			return nil
-		} else if notFoundError(err1) {
-			return nil
-		} else {
-			return resource.RetryableError(fmt.Errorf("error on  DisassociateAddress %q, %s", d.Id(), err1))
-		}
-	})
+func resourceKsyunEipAssociationDelete(d *schema.ResourceData, meta interface{}) (err error) {
+	eipService := EipService{meta.(*KsyunClient)}
+	err = eipService.RemoveAddressAssociate(d)
+	if err != nil {
+		return fmt.Errorf("error on deleting address association %q, %s", d.Id(), err)
+	}
+	return err
 }

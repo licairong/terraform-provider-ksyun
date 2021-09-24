@@ -35,6 +35,18 @@ func ksyunApiCall(api []ksyunApiCallFunc, d *schema.ResourceData, meta interface
 }
 
 func ksyunApiCallNew(api []ApiCall, d *schema.ResourceData, client *KsyunClient, isDryRun bool) (err error) {
+	if !client.dryRun || !isDryRun {
+		return ksyunApiCallProcess(api, d, client, false)
+	} else {
+		err = ksyunApiCallProcess(api, d, client, true)
+		if err != nil {
+			return err
+		}
+		return ksyunApiCallProcess(api, d, client, false)
+	}
+}
+
+func ksyunApiCallProcess(api []ApiCall, d *schema.ResourceData, client *KsyunClient, isDryRun bool) (err error) {
 	if api != nil {
 		for _, f := range api {
 			if f.executeCall != nil {
