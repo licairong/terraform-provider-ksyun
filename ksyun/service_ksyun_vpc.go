@@ -481,11 +481,29 @@ func (s *VpcService) ReadAndSetSubnets(d *schema.ResourceData, r *schema.Resourc
 	})
 }
 
+func (s *VpcService) SubnetAutoMatch(req *map[string]interface{}) {
+	for k, v := range *req {
+		if k == "SubnetType" && v.(string) != "Reserve" {
+			gw, start, end := getCidrIpRange((*req)["CidrBlock"].(string))
+			if _, ok := (*req)["GatewayIp"]; !ok {
+				(*req)["GatewayIp"] = gw
+			}
+			if _, ok := (*req)["DhcpIpFrom"]; !ok {
+				(*req)["DhcpIpFrom"] = start
+			}
+			if _, ok := (*req)["DhcpIpTo"]; !ok {
+				(*req)["DhcpIpTo"] = end
+			}
+		}
+	}
+}
+
 func (s *VpcService) CreateSubnetCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
 	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
 	if err != nil {
 		return callback, err
 	}
+	s.SubnetAutoMatch(&req)
 	if req["SubnetType"] != "Reserve" {
 		if _, ok := req["GatewayIp"]; !ok {
 			return callback, fmt.Errorf("GatewayIp must set when SubnetType is not Reserve ")
@@ -495,9 +513,6 @@ func (s *VpcService) CreateSubnetCall(d *schema.ResourceData, r *schema.Resource
 		}
 		if _, ok := req["DhcpIpTo"]; !ok {
 			return callback, fmt.Errorf("DhcpIpTo must set when SubnetType is not Reserve ")
-		}
-		if _, ok := req["Dns1"]; !ok {
-			return callback, fmt.Errorf("Dns1 must set when SubnetType is not Reserve ")
 		}
 	}
 
@@ -1074,9 +1089,6 @@ func (s *VpcService) RemoveNat(d *schema.ResourceData) (err error) {
 
 func (s *VpcService) ReadNatAssociate(d *schema.ResourceData, natId string, subnetId string) (data map[string]interface{}, err error) {
 	data, err = s.ReadNat(d, natId)
-	if data["NatMode"] == "Vpc" {
-		return data, fmt.Errorf("NatType is vpc not support associate")
-	}
 	if items, ok := data["AssociateNatSet"]; ok {
 		if len(items.([]interface{})) == 0 {
 			return data, fmt.Errorf("Subnet %s not exist in Nat %s ", subnetId, natId)
