@@ -46,6 +46,12 @@ func Provider() terraform.ResourceProvider {
 				DefaultFunc: schema.EnvDefaultFunc("KSYUN_DRY_RUN", false),
 				Description: descriptions["dry_run"],
 			},
+			"ignore_service": {
+				Type:        schema.TypeBool,
+				Optional:    true,
+				DefaultFunc: schema.EnvDefaultFunc("KSYUN_DOMAIN_IGNORE_SERVICE", false),
+				Description: descriptions["ignore_service"],
+			},
 		},
 		DataSourcesMap: map[string]*schema.Resource{
 			"ksyun_lines":                         dataSourceKsyunLines(),
@@ -94,6 +100,7 @@ func Provider() terraform.ResourceProvider {
 			"ksyun_vpn_gateways":                dataSourceKsyunVpnGateways(),
 			"ksyun_vpn_customer_gateways":       dataSourceKsyunVpnCustomerGateways(),
 			"ksyun_vpn_tunnels":                 dataSourceKsyunVpnTunnels(),
+			"ksyun_bwses":                       dataSourceKsyunBandWidthShares(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"ksyun_eip":                              resourceKsyunEip(),
@@ -161,12 +168,13 @@ func Provider() terraform.ResourceProvider {
 
 func providerConfigure(d *schema.ResourceData) (interface{}, error) {
 	config := Config{
-		AccessKey: d.Get("access_key").(string),
-		SecretKey: d.Get("secret_key").(string),
-		Region:    d.Get("region").(string),
-		Insecure:  d.Get("insecure").(bool),
-		Domain:    d.Get("domain").(string),
-		DryRun:    d.Get("dry_run").(bool),
+		AccessKey:     d.Get("access_key").(string),
+		SecretKey:     d.Get("secret_key").(string),
+		Region:        d.Get("region").(string),
+		Insecure:      d.Get("insecure").(bool),
+		Domain:        d.Get("domain").(string),
+		DryRun:        d.Get("dry_run").(bool),
+		IgnoreService: d.Get("ignore_service").(bool),
 	}
 	client, err := config.Client()
 	return client, err
@@ -176,10 +184,12 @@ var descriptions map[string]string
 
 func init() {
 	descriptions = map[string]string{
-		"access_key": "ak",
-		"secret_key": "sk",
-		"region":     "cn-beijing-6",
-		"insecure":   "true",
-		"domain":     "",
+		"access_key":     "ak",
+		"secret_key":     "sk",
+		"region":         "cn-beijing-6",
+		"insecure":       "true",
+		"domain":         "",
+		"dry_run":        "false",
+		"ignore_service": "false",
 	}
 }

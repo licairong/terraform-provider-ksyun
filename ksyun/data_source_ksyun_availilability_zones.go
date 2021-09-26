@@ -19,7 +19,7 @@ func dataSourceKsyunAvailabilityZones() *schema.Resource {
 			},
 
 			"availability_zones": {
-				Type:     schema.TypeList,
+				Type:     schema.TypeSet,
 				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -29,6 +29,7 @@ func dataSourceKsyunAvailabilityZones() *schema.Resource {
 						},
 					},
 				},
+				Set: schema.HashString,
 			},
 		},
 	}
@@ -36,5 +37,5 @@ func dataSourceKsyunAvailabilityZones() *schema.Resource {
 
 func dataSourceKsyunAvailabilityZonesRead(d *schema.ResourceData, meta interface{}) error {
 	vpcService := VpcService{meta.(*KsyunClient)}
-	return vpcService.ReadAndSetAvailabilityZones(d,dataSourceKsyunAvailabilityZones())
+	return vpcService.ReadAndSetAvailabilityZones(d, dataSourceKsyunAvailabilityZones())
 }

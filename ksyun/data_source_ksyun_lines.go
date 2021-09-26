@@ -1,7 +1,6 @@
 package ksyun
 
 import (
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
@@ -55,45 +54,7 @@ func dataSourceKsyunLines() *schema.Resource {
 	}
 }
 
-func dataSourceKsyunLinesRead(d *schema.ResourceData, m interface{}) error {
-	conn := m.(*KsyunClient).eipconn
-	req := make(map[string]interface{})
-	var lines []string
-
-	var allLines []interface{}
-
-	resp, err := conn.GetLines(&req)
-	if err != nil {
-		return fmt.Errorf("error on reading Line list req(%v):%v", req, err)
-	}
-	itemSet, ok := (*resp)["LineSet"]
-	if !ok {
-		return fmt.Errorf("error on reading Line set")
-
-	}
-	items, ok := itemSet.([]interface{})
-	if !ok {
-		return nil
-	}
-	if items == nil || len(items) < 1 {
-		return nil
-	}
-	allLines = append(allLines, items...)
-	datas := GetSubSliceDByRep(allLines, lineKeys)
-	if name, ok := d.GetOk("line_name"); ok {
-		var dataFilter []map[string]interface{}
-		for k, v := range datas {
-			if v["line_name"] == name {
-				dataFilter = append(dataFilter, datas[k])
-				break
-			}
-		}
-		datas = dataFilter
-	}
-
-	err = dataSourceKscSave(d, "lines", lines, datas)
-	if err != nil {
-		return fmt.Errorf("error on save lines list, %s", err)
-	}
-	return nil
+func dataSourceKsyunLinesRead(d *schema.ResourceData, meta interface{}) error {
+	eipService := EipService{meta.(*KsyunClient)}
+	return eipService.ReadAndSetLines(d, dataSourceKsyunLines())
 }
