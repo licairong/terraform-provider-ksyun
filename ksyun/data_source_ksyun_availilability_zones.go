@@ -19,7 +19,7 @@ func dataSourceKsyunAvailabilityZones() *schema.Resource {
 			},
 
 			"availability_zones": {
-				Type:     schema.TypeSet,
+				Type:     schema.TypeList,
 				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
@@ -29,7 +29,6 @@ func dataSourceKsyunAvailabilityZones() *schema.Resource {
 						},
 					},
 				},
-				Set: schema.HashString,
 			},
 		},
 	}
