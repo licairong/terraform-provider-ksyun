@@ -397,3 +397,38 @@ func (s *EipService) RemoveAddressAssociate(d *schema.ResourceData) (err error) 
 	}
 	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
+
+func (s *EipService) ReadLines() (data []interface{}, err error) {
+	var (
+		resp    *map[string]interface{}
+		results interface{}
+	)
+	conn := s.client.eipconn
+	action := "GetLines"
+	logger.Debug(logger.ReqFormat, action, nil)
+	resp, err = conn.GetLines(nil)
+	if err != nil {
+		return data, err
+	}
+
+	results, err = getSdkValue("LineSet", *resp)
+	if err != nil {
+		return data, err
+	}
+	data = results.([]interface{})
+	return data, err
+}
+
+func (s *EipService) ReadAndSetLines(d *schema.ResourceData, r *schema.Resource) (err error) {
+	data, err := s.ReadLines()
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		nameField:   "LineName",
+		idFiled:     "LineId",
+		targetField: "lines",
+	})
+}

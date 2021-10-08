@@ -64,6 +64,64 @@ func (s *VpcService) ReadNetworkInterface(d *schema.ResourceData, instanceId str
 	return data, err
 }
 
+func (s *VpcService) ReadAndSetNetworkInterfaces(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "NetworkInterfaceId",
+			Type:    TransformWithN,
+		},
+		"vpc_id": {
+			mapping: "vpc-id",
+			Type:    TransformWithFilter,
+		},
+		"subnet_id": {
+			mapping: "subnet-id",
+			Type:    TransformWithFilter,
+		},
+		"securitygroup_id": {
+			mapping: "securitygroup-id",
+			Type:    TransformWithFilter,
+		},
+		"instance_type": {
+			mapping: "instance-type",
+			Type:    TransformWithFilter,
+		},
+		"instance_id": {
+			mapping: "instance-id",
+			Type:    TransformWithFilter,
+		},
+		"private_ip_address": {
+			mapping: "private-ip-address",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadNetworkInterfaces(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		nameField:   "NetworkInterfaceName",
+		idFiled:     "NetworkInterfaceId",
+		targetField: "network_interfaces",
+		extra: map[string]SdkResponseMapping{
+			"NetworkInterfaceName": {
+				Field:    "name",
+				KeepAuto: true,
+			},
+			"NetworkInterfaceId": {
+				Field:    "id",
+				KeepAuto: true,
+			},
+		},
+	})
+}
+
 func (s *VpcService) RemoveNetworkInterface(d *schema.ResourceData) (err error) {
 	call, err := s.RemoveNetworkInterfaceCall(d)
 	if err != nil {
@@ -2007,7 +2065,7 @@ func (s *VpcService) CreateSecurityGroupCall(d *schema.ResourceData, r *schema.R
 		},
 		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
 			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
-			id, err := getSdkValue("SecurityGroupId", *resp)
+			id, err := getSdkValue("SecurityGroup.SecurityGroupId", *resp)
 			if err != nil {
 				return err
 			}
@@ -3105,6 +3163,7 @@ func (s *VpcService) ReadAvailabilityZones(condition map[string]interface{}) (da
 	conn := s.client.vpcconn
 	action := "DescribeAvailabilityZones"
 	logger.Debug(logger.ReqFormat, action, condition)
+	logger.Debug(logger.ReqFormat, action, conn.Endpoint)
 	resp, err = conn.DescribeAvailabilityZones(nil)
 	if err != nil {
 		return data, err

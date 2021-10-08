@@ -36,5 +36,5 @@ func dataSourceKsyunAvailabilityZones() *schema.Resource {
 
 func dataSourceKsyunAvailabilityZonesRead(d *schema.ResourceData, meta interface{}) error {
 	vpcService := VpcService{meta.(*KsyunClient)}
-	return vpcService.ReadAndSetAvailabilityZones(d,dataSourceKsyunAvailabilityZones())
+	return vpcService.ReadAndSetAvailabilityZones(d, dataSourceKsyunAvailabilityZones())
 }

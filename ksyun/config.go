@@ -22,17 +22,17 @@ import (
 	"github.com/ks3sdklib/aws-sdk-go/aws"
 	"github.com/ks3sdklib/aws-sdk-go/aws/credentials"
 	"github.com/ks3sdklib/aws-sdk-go/service/s3"
-	"github.com/terraform-providers/terraform-provider-ksyun/logger"
 )
 
 // Config is the configuration of ksyun meta data
 type Config struct {
-	AccessKey string
-	SecretKey string
-	Region    string
-	Insecure  bool
-	Domain    string
-	DryRun    bool
+	AccessKey     string
+	SecretKey     string
+	Region        string
+	Insecure      bool
+	Domain        string
+	DryRun        bool
+	IgnoreService bool
 }
 
 // Client will returns a client with connections for all product
@@ -45,12 +45,12 @@ func (c *Config) Client() (*KsyunClient, error) {
 		Region: &c.Region,
 	}
 	url := &utils.UrlInfo{
-		UseSSL:         false,
-		Locate:         false,
-		CustomerDomain: c.Domain,
+		UseSSL:                      false,
+		Locate:                      false,
+		CustomerDomain:              c.Domain,
+		CustomerDomainIgnoreService: c.IgnoreService,
 	}
 	client.dryRun = c.DryRun
-	logger.Debug(logger.ReqFormat, "Demo", url)
 	client.vpcconn = vpc.SdkNew(cli, cfg, url)
 	client.eipconn = eip.SdkNew(cli, cfg, url)
 	client.slbconn = slb.SdkNew(cli, cfg, url)
@@ -66,8 +66,8 @@ func (c *Config) Client() (*KsyunClient, error) {
 	client.mongodbconn = mongodb.SdkNew(cli, cfg, url)
 	client.iamconn = iam.SdkNew(cli, cfg, url)
 	client.rabbitmqconn = rabbitmq.SdkNew(cli, cfg, url)
-	client.bwsconn = bws.SdkNew(cli,cfg,url)
-	
+	client.bwsconn = bws.SdkNew(cli, cfg, url)
+
 	credentials := credentials.NewStaticCredentials(c.AccessKey, c.SecretKey, "")
 	client.ks3conn = s3.New(&aws.Config{
 		Region:           "BEIJING",

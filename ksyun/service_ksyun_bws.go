@@ -20,7 +20,6 @@ func (s *BwsService) ReadBandWidthShares(condition map[string]interface{}) (data
 	conn := s.client.bwsconn
 	action := "DescribeBandWidthShares"
 	logger.Debug(logger.ReqFormat, action, condition)
-	logger.Debug(logger.ReqFormat, action, "---------------------")
 	if condition == nil {
 		resp, err = conn.DescribeBandWidthShares(nil)
 		if err != nil {
@@ -124,6 +123,16 @@ func (s *BwsService) ReadAndSetBandWidthShares(d *schema.ResourceData, r *schema
 			"BandWidthShareId": {
 				Field:    "id",
 				KeepAuto: true,
+			},
+			"AssociateBandWidthShareInfoSet": {
+				Field: "allocation_ids",
+				FieldRespFunc: func(i interface{}) interface{} {
+					var result []interface{}
+					for _, v := range i.([]interface{}) {
+						result = append(result, v.(map[string]interface{})["AllocationId"])
+					}
+					return result
+				},
 			},
 		},
 	})
