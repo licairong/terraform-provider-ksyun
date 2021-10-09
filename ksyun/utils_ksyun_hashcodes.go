@@ -117,9 +117,7 @@ func securityGroupEntryHashBase(v interface{}, isHump bool) (buf bytes.Buffer) {
 		}
 		intField := generateEntryField(protocol)
 		for _, s := range intField {
-			if _, ok := d.GetOk(s); ok {
-				buf.WriteString(fmt.Sprintf("%d:", int64(d.Get(s).(int))))
-			}
+			buf.WriteString(fmt.Sprintf("%d:", int64(d.Get(s).(int))))
 		}
 	}
 	return buf

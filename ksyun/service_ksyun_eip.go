@@ -424,9 +424,20 @@ func (s *EipService) ReadAndSetLines(d *schema.ResourceData, r *schema.Resource)
 	if err != nil {
 		return err
 	}
+	var newData []interface{}
+	if name, ok := d.GetOk("line_name"); ok {
+		for _, line := range data {
+			m := line.(map[string]interface{})
+			if m["LineName"] == name {
+				newData = append(newData, line)
+			}
+		}
+	} else {
+		newData = data
+	}
 
 	return mergeDataSourcesResp(d, r, ksyunDataSource{
-		collection:  data,
+		collection:  newData,
 		nameField:   "LineName",
 		idFiled:     "LineId",
 		targetField: "lines",
