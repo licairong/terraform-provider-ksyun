@@ -36,9 +36,10 @@ func resourceKsyunNetworkAclEntry() *schema.Resource {
 				),
 			},
 			"rule_number": {
-				Type:     schema.TypeInt,
-				Required: true,
-				ForceNew: true,
+				Type:         schema.TypeInt,
+				Required:     true,
+				ForceNew:     true,
+				ValidateFunc: validation.IntBetween(1, 32766),
 			},
 			"direction": {
 				Type:     schema.TypeString,

@@ -1477,7 +1477,26 @@ func (s *VpcService) CreateNetworkAclEntryWithAclCall(d *schema.ResourceData, r 
 }
 
 func (s *VpcService) CreateNetworkAclEntryCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
-	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
+	transform := map[string]SdkReqTransform{
+		"icmp_type": {
+			ValueFunc: func(data *schema.ResourceData) (interface{}, bool) {
+				return d.Get("icmp_type"), true
+			},
+		},
+		"icmp_code": {
+			ValueFunc: func(data *schema.ResourceData) (interface{}, bool) {
+				return d.Get("icmp_code"), true
+			},
+		},
+	}
+	req, err := SdkRequestAutoMapping(d, r, false, transform, nil, SdkReqParameter{
+		false,
+	})
+	if req["Protocol"] != "icmp" {
+		delete(req, "IcmpType")
+		delete(req, "IcmpCode")
+	}
+
 	if err != nil {
 		return callback, err
 	}
@@ -2103,7 +2122,25 @@ func (s *VpcService) CreateSecurityGroupEntryWithSgCall(d *schema.ResourceData, 
 }
 
 func (s *VpcService) CreateSecurityGroupEntryCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
-	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
+	transform := map[string]SdkReqTransform{
+		"icmp_type": {
+			ValueFunc: func(data *schema.ResourceData) (interface{}, bool) {
+				return d.Get("icmp_type"), true
+			},
+		},
+		"icmp_code": {
+			ValueFunc: func(data *schema.ResourceData) (interface{}, bool) {
+				return d.Get("icmp_code"), true
+			},
+		},
+	}
+	req, err := SdkRequestAutoMapping(d, r, false, transform, nil, SdkReqParameter{
+		false,
+	})
+	if req["Protocol"] != "icmp" {
+		delete(req, "IcmpType")
+		delete(req, "IcmpCode")
+	}
 	if err != nil {
 		return callback, err
 	}
