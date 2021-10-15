@@ -1,5 +1,5 @@
-.idea/*
-bin/*
+.idea/
+bin/
 terraform-provider-ksyun
-.terraform/*
-.tfstate
+.terraform/
+*.tfstate
