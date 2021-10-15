@@ -320,6 +320,9 @@ func transformListUnique(v interface{}, k string, t SdkReqTransform, req *map[st
 }
 
 func transformWithFilter(v interface{}, k string, t SdkReqTransform, index int, req *map[string]interface{}) (int, error) {
+	if x, ok := v.([]interface{}); ok {
+		v = schema.NewSet(schema.HashString, x)
+	}
 	if x, ok := v.(*schema.Set); ok {
 		if ok, j, err := transformFieldReqFunc(v, k, t, index, req); ok {
 			if err != nil {
@@ -522,6 +525,7 @@ func requestCreateMapping(d *schema.ResourceData, k string, t SdkReqTransform, i
 
 func requestUpdateMapping(d *schema.ResourceData, k string, t SdkReqTransform, index int, extraMapping map[string]SdkRequestMapping, req *map[string]interface{}) (int, error) {
 	var err error
+
 	if t.forceUpdateParam || (d.HasChange(k) && !d.IsNewResource()) {
 		index, err = requestCreateMapping(d, k, t, index, extraMapping, req, true)
 	}

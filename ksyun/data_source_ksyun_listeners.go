@@ -1,8 +1,8 @@
 package ksyun
 
 import (
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func dataSourceKsyunListeners() *schema.Resource {
@@ -18,6 +18,12 @@ func dataSourceKsyunListeners() *schema.Resource {
 				Set: schema.HashString,
 			},
 
+			"name_regex": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ValidateFunc: validation.StringIsValidRegExp,
+			},
+
 			"output_file": {
 				Type:     schema.TypeString,
 				Optional: true,
@@ -28,6 +34,13 @@ func dataSourceKsyunListeners() *schema.Resource {
 				Computed: true,
 			},
 			"load_balancer_id": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+			},
+			"certificate_id": {
 				Type:     schema.TypeList,
 				Optional: true,
 				Elem: &schema.Schema{
@@ -218,48 +231,9 @@ func dataSourceKsyunListeners() *schema.Resource {
 	}
 }
 
-func dataSourceKsyunListenersRead(d *schema.ResourceData, m interface{}) error {
-	var result []map[string]interface{}
-	conn := m.(*KsyunClient).slbconn
-	req := make(map[string]interface{})
-	var Listeners []string
-	if ids, ok := d.GetOk("ids"); ok {
-		Listeners = SchemaSetToStringSlice(ids)
-	}
-	for k, v := range Listeners {
-		if v == "" {
-			continue
-		}
-		req[fmt.Sprintf("ListenerId.%d", k+1)] = v
-	}
-	filters := []string{"load_balancer_id"}
-	req = *SchemaSetsToFilterMap(d, filters, &req)
-
-	var allListeners []interface{}
-
-	resp, err := conn.DescribeListeners(&req)
-	if err != nil {
-		return fmt.Errorf("error on reading listener list req (%v):%v", req, err)
-	}
-	itemSet, ok := (*resp)["ListenerSet"]
-	if !ok {
-		return fmt.Errorf("error on reading Listener set")
-
-	}
-	items, ok := itemSet.([]interface{})
-	if !ok {
-		return nil
-	}
-	if items == nil || len(items) < 1 {
-		return nil
-	}
-	allListeners = append(allListeners, items...)
-	merageResultDirect(&result, allListeners)
-	err = dataSourceKsyunListenersSave(d, result)
-	if err != nil {
-		return fmt.Errorf("error on save Listener list, %s", err)
-	}
-	return nil
+func dataSourceKsyunListenersRead(d *schema.ResourceData, meta interface{}) error {
+	slbService := SlbService{meta.(*KsyunClient)}
+	return slbService.ReadAndSetListeners(d, dataSourceKsyunListeners())
 }
 
 func dataSourceKsyunListenersSave(d *schema.ResourceData, result []map[string]interface{}) error {
