@@ -24,11 +24,16 @@ func resourceKsyunListener() *schema.Resource {
 			"load_balancer_id": {
 				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
 			},
 			"listener_state": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Computed: true,
+				Default:  "start",
+				ValidateFunc: validation.StringInSlice([]string{
+					"start",
+					"stop",
+				}, false),
 			},
 			"listener_name": {
 				Type:     schema.TypeString,
@@ -39,86 +44,112 @@ func resourceKsyunListener() *schema.Resource {
 				Type:     schema.TypeString,
 				Optional: true,
 				Default:  "TCP",
-				ForceNew: true,
 				ValidateFunc: validation.StringInSlice([]string{
 					"TCP",
 					"UDP",
 					"HTTP",
 					"HTTPS",
 				}, false),
+				ForceNew: true,
 			},
 			"certificate_id": {
-				Type:     schema.TypeString,
-				Optional: true,
+				Type:             schema.TypeString,
+				Optional:         true,
+				DiffSuppressFunc: lbListenerDiffSuppressFunc,
 			},
 			"listener_port": {
-				Type:     schema.TypeInt,
-				Required: true,
-				ForceNew: true,
+				Type:         schema.TypeInt,
+				Required:     true,
+				ForceNew:     true,
+				ValidateFunc: validation.IntBetween(1, 65535),
 			},
 			"method": {
 				Type:     schema.TypeString,
-				Required: true,
+				Optional: true,
+				Default:  "RoundRobin",
+				ForceNew: true,
 				ValidateFunc: validation.StringInSlice([]string{
 					"RoundRobin",
 					"LeastConnections",
 					"MasterSlave",
 				}, false),
 			},
-			"listener_id": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
-			"create_time": {
-				Type:     schema.TypeString,
-				Computed: true,
-			},
 
 			"enable_http2": {
-				Type:     schema.TypeBool,
-				Optional: true,
-				Computed: true,
+				Type:             schema.TypeBool,
+				Optional:         true,
+				Default:          true,
+				DiffSuppressFunc: lbListenerDiffSuppressFunc,
 			},
 
 			"tls_cipher_policy": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Computed: true,
+				Default:  "TlsCipherPolicy1.0",
 				ValidateFunc: validation.StringInSlice([]string{
 					"TlsCipherPolicy1.0",
 					"TlsCipherPolicy1.1",
 					"TlsCipherPolicy1.2",
 					"TlsCipherPolicy1.2-strict",
 				}, false),
+				DiffSuppressFunc: lbListenerDiffSuppressFunc,
 			},
 			"http_protocol": {
 				Type:     schema.TypeString,
 				Optional: true,
-				Computed: true,
+				Default:  "HTTP1.1",
 				ValidateFunc: validation.StringInSlice([]string{
 					"HTTP1.0",
 					"HTTP1.1",
 				}, false),
-			},
-
-			"band_width_out": {
-				Type:         schema.TypeInt,
-				Optional:     true,
-				Computed:     true,
-				ValidateFunc: validation.IntBetween(1, 10000),
-			},
-
-			"band_width_in": {
-				Type:         schema.TypeInt,
-				Optional:     true,
-				Computed:     true,
-				ValidateFunc: validation.IntBetween(1, 10000),
+				DiffSuppressFunc: lbListenerDiffSuppressFunc,
 			},
 
 			"redirect_listener_id": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
+				Type:             schema.TypeString,
+				Optional:         true,
+				Computed:         true,
+				DiffSuppressFunc: lbListenerDiffSuppressFunc,
+			},
+
+			"session": {
+				Type:     schema.TypeList,
+				MaxItems: 1,
+				MinItems: 1,
+				Required: true,
+				Elem: &schema.Resource{
+					Schema: map[string]*schema.Schema{
+						"session_state": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Default:  "stop",
+							ValidateFunc: validation.StringInSlice([]string{
+								"start",
+								"stop",
+							}, false),
+						},
+						"session_persistence_period": {
+							Type:         schema.TypeInt,
+							Optional:     true,
+							Default:      3600,
+							ValidateFunc: validation.IntBetween(1, 86400),
+						},
+						"cookie_type": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Default:  "ImplantCookie",
+							ValidateFunc: validation.StringInSlice([]string{
+								"ImplantCookie",
+								"RewriteCookie",
+							}, false),
+						},
+						"cookie_name": {
+							Type:     schema.TypeString,
+							Optional: true,
+							Computed: true,
+						},
+					},
+				},
 			},
 
 			"health_check": {
@@ -182,44 +213,14 @@ func resourceKsyunListener() *schema.Resource {
 					},
 				},
 			},
-			"session": {
-				Type:     schema.TypeList,
-				MaxItems: 1,
-				MinItems: 1,
-				Required: true,
-				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"session_persistence_period": {
-							Type:         schema.TypeInt,
-							Computed:     true,
-							Optional:     true,
-							ValidateFunc: validation.IntBetween(1, 86400),
-						},
-						"session_state": {
-							Type:     schema.TypeString,
-							Default:  "stop",
-							Optional: true,
-							ValidateFunc: validation.StringInSlice([]string{
-								"start",
-								"stop",
-							}, false),
-						},
-						"cookie_type": {
-							Type:     schema.TypeString,
-							Optional: true,
-							Computed: true,
-							ValidateFunc: validation.StringInSlice([]string{
-								"ImplantCookie",
-								"RewriteCookie",
-							}, false),
-						},
-						"cookie_name": {
-							Type:     schema.TypeString,
-							Optional: true,
-							Computed: true,
-						},
-					},
-				},
+
+			"listener_id": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+			"create_time": {
+				Type:     schema.TypeString,
+				Computed: true,
 			},
 		},
 	}

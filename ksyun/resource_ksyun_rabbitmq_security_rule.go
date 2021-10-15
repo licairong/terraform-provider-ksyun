@@ -102,9 +102,8 @@ func resourceRabbitmqSecurityRuleCreate(d *schema.ResourceData, meta interface{}
 
 func resourceRabbitmqSecurityRuleDelete(d *schema.ResourceData, meta interface{}) error {
 	var (
-		err  error
-		del  string
-		resp *map[string]interface{}
+		err error
+		del string
 	)
 	if checkMultipleExist("cidrs", d) {
 		del = d.Get("cidrs").(string)
@@ -113,7 +112,7 @@ func resourceRabbitmqSecurityRuleDelete(d *schema.ResourceData, meta interface{}
 	}
 
 	return resource.Retry(25*time.Minute, func() *resource.RetryError {
-		resp, err = deleteRabbitmqRules(d, meta, d.Get("instance_id").(string), del)
+		_, err = deleteRabbitmqRules(d, meta, d.Get("instance_id").(string), del)
 		if err == nil {
 			return nil
 		}
