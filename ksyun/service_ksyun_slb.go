@@ -354,7 +354,28 @@ func (s *SlbService) ReadAndSetListener(d *schema.ResourceData, r *schema.Resour
 	if err != nil {
 		return err
 	}
-	SdkResponseAutoResourceData(d, r, data, nil)
+	extra := map[string]SdkResponseMapping{
+		"Session": {
+			Field: "session",
+			FieldRespFunc: func(i interface{}) interface{} {
+				return []interface{}{
+					i,
+				}
+			},
+		},
+		"HealthCheck": {
+			Field: "health_check",
+			FieldRespFunc: func(i interface{}) interface{} {
+				if len(i.(map[string]interface{})) > 0 {
+					return []interface{}{
+						i,
+					}
+				}
+				return nil
+			},
+		},
+	}
+	SdkResponseAutoResourceData(d, r, data, extra)
 	return err
 }
 
@@ -398,6 +419,15 @@ func (s *SlbService) CreateListenerCall(d *schema.ResourceData, r *schema.Resour
 				return data.Get("enable_http2"), true
 			},
 		},
+		"session": {
+			Type: TransformListUnique,
+		},
+		"health_check": {
+			Ignore: true,
+		},
+		"load_balancer_acl_id": {
+			Ignore: true,
+		},
 	}
 	req, err := SdkRequestAutoMapping(d, r, false, transform, nil, SdkReqParameter{
 		onlyTransform: false,
@@ -405,6 +435,16 @@ func (s *SlbService) CreateListenerCall(d *schema.ResourceData, r *schema.Resour
 
 	if req["listener_protocol"] != "HTTPS" {
 		delete(req, "EnableHttp2")
+	}
+	for k, v := range req {
+		if strings.HasPrefix(k, "Session.") {
+			req[strings.Replace(k, "Session.", "", -1)] = v
+			delete(req, k)
+		}
+	}
+	// if session is zero need set default SessionState stop
+	if _, ok := req["SessionState"]; !ok {
+		req["SessionState"] = "stop"
 	}
 
 	if err != nil {
@@ -426,14 +466,214 @@ func (s *SlbService) CreateListenerCall(d *schema.ResourceData, r *schema.Resour
 				return err
 			}
 			d.SetId(id.(string))
-			return err
+			return d.Set("listener_id", d.Id())
 		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) CreateHealthCheckWithListenerCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	transform := map[string]SdkReqTransform{
+		"health_check": {
+			Type: TransformListUnique,
+		},
+	}
+	req, err := SdkRequestAutoMapping(d, r, false, transform, nil)
+	if err != nil {
+		return callback, err
+	}
+	for k, v := range req {
+		if strings.HasPrefix(k, "HealthCheck.") {
+			req[strings.Replace(k, "HealthCheck.", "", -1)] = v
+			delete(req, k)
+		}
+	}
+	if d.Get("listener_protocol") != "HTTP" && d.Get("listener_protocol") != "HTTPS" {
+		delete(req, "UrlPath")
+		delete(req, "HostName")
+		delete(req, "IsDefaultHostName")
+	}
+	if len(req) > 0 {
+		return s.CreateHealthCheckCommonCall(req, false)
 	}
 	return callback, err
 }
 
 func (s *SlbService) CreateListener(d *schema.ResourceData, r *schema.Resource) (err error) {
 	call, err := s.CreateListenerCall(d, r)
+	if err != nil {
+		return err
+	}
+	health, err := s.CreateHealthCheckWithListenerCall(d, r)
+	if err != nil {
+		return err
+	}
+	var acl ApiCall
+	if v, ok := d.GetOk("load_balancer_acl_id"); ok {
+		acl, err = s.CreateLoadBalancerAclAssociateWithListenerCall(d, r, v.(string))
+	}
+	return ksyunApiCallNew([]ApiCall{call, health, acl}, d, s.client, false)
+}
+
+func (s *SlbService) ModifyHealthCheckWithListenerCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	transform := map[string]SdkReqTransform{
+		"health_check": {
+			Type: TransformListUnique,
+		},
+	}
+	req, err := SdkRequestAutoMapping(d, r, true, transform, nil)
+	if err != nil {
+		return callback, err
+	}
+	for k, v := range req {
+		if strings.HasPrefix(k, "HealthCheck.") {
+			req[strings.Replace(k, "HealthCheck.", "", -1)] = v
+			delete(req, k)
+		}
+	}
+	//special
+	req["HealthCheckState"] = d.Get("health_check.0.health_check_state")
+	if d.Get("listener_protocol") == "HTTP" || d.Get("listener_protocol") == "HTTPS" {
+		req["UrlPath"] = d.Get("health_check.0.url_path")
+	}
+	return s.ModifyHealthCheckCommonCall(req, d.Get("health_check.0.health_check_id").(string))
+}
+
+func (s *SlbService) ModifyListenerCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	transform := map[string]SdkReqTransform{
+		"session": {
+			Type: TransformListUnique,
+		},
+		"health_check": {
+			Ignore: true,
+		},
+	}
+	req, err := SdkRequestAutoMapping(d, r, true, transform, nil, SdkReqParameter{
+		onlyTransform: false,
+	})
+	if err != nil {
+		return callback, err
+	}
+	//特殊处理下"Session."
+	for k, v := range req {
+		if strings.HasPrefix(k, "Session.") {
+			req[strings.Replace(k, "Session.", "", -1)] = v
+			delete(req, k)
+		}
+	}
+	if len(req) > 0 {
+		req["ListenerId"] = d.Id()
+		callback = ApiCall{
+			param:  &req,
+			action: "ModifyListeners",
+			executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+				conn := client.slbconn
+				logger.Debug(logger.RespFormat, call.action, *(call.param))
+				resp, err = conn.ModifyListeners(call.param)
+				return resp, err
+			},
+			afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+				logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+				return err
+			},
+		}
+	}
+	return callback, err
+}
+
+func (s *SlbService) ModifyListener(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.ModifyListenerCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	var healthCheckCall ApiCall
+	if len(d.Get("health_check").([]interface{})) > 0 && d.Get("health_check.0.health_check_id") != "" {
+		healthCheckCall, err = s.ModifyHealthCheckWithListenerCall(d, r)
+	} else {
+		healthCheckCall, err = s.CreateHealthCheckWithListenerCall(d, r)
+	}
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, healthCheckCall)
+	if d.HasChange("load_balancer_acl_id") {
+		o, n := d.GetChange("load_balancer_acl_id")
+		if d.Get("load_balancer_acl_id") == "" {
+			var aclRemoveCall ApiCall
+			aclRemoveCall, err = s.RemoveLoadBalancerAclAssociateCommonCall(d.Get("listener_id").(string), o.(string))
+			if err != nil {
+				return err
+			}
+			callbacks = append(callbacks, aclRemoveCall)
+		} else {
+			if o == "" {
+				var aclAddCall ApiCall
+				aclAddCall, err = s.CreateLoadBalancerAclAssociateWithListenerCall(d, r, n.(string))
+				if err != nil {
+					return err
+				}
+				callbacks = append(callbacks, aclAddCall)
+			} else {
+				var aclAddCall ApiCall
+				var aclRemoveCall ApiCall
+				aclRemoveCall, err = s.RemoveLoadBalancerAclAssociateCommonCall(d.Get("listener_id").(string), o.(string))
+				if err != nil {
+					return err
+				}
+				callbacks = append(callbacks, aclRemoveCall)
+				aclAddCall, err = s.CreateLoadBalancerAclAssociateWithListenerCall(d, r, n.(string))
+				if err != nil {
+					return err
+				}
+				callbacks = append(callbacks, aclAddCall)
+			}
+		}
+	}
+	return ksyunApiCallNew(callbacks, d, s.client, true)
+}
+
+func (s *SlbService) RemoveListenerCall(d *schema.ResourceData) (callback ApiCall, err error) {
+	removeReq := map[string]interface{}{
+		"ListenerId": d.Id(),
+	}
+	callback = ApiCall{
+		param:  &removeReq,
+		action: "DeleteListeners",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.DeleteListeners(call.param)
+			return resp, err
+		},
+		callError: func(d *schema.ResourceData, client *KsyunClient, call ApiCall, baseErr error) error {
+			return resource.Retry(15*time.Minute, func() *resource.RetryError {
+				_, callErr := s.ReadListener(d, "")
+				if callErr != nil {
+					if notFoundError(callErr) {
+						return nil
+					} else {
+						return resource.NonRetryableError(fmt.Errorf("error on  reading health check when delete %q, %s", d.Id(), callErr))
+					}
+				}
+				_, callErr = call.executeCall(d, client, call)
+				if callErr == nil {
+					return nil
+				}
+				return resource.RetryableError(callErr)
+			})
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) RemoveListener(d *schema.ResourceData) (err error) {
+	call, err := s.RemoveListenerCall(d)
 	if err != nil {
 		return err
 	}
@@ -544,40 +784,40 @@ func (s *SlbService) ReadAndSetHealthChecks(d *schema.ResourceData, r *schema.Re
 	})
 }
 
-func (s *SlbService) CreateHealthCheckCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
-	transform := map[string]SdkReqTransform{
-		"is_default_host_name": {
-			ValueFunc: func(data *schema.ResourceData) (interface{}, bool) {
-				return data.Get("is_default_host_name"), true
-			},
-		},
-	}
-	req, err := SdkRequestAutoMapping(d, r, false, transform, nil, SdkReqParameter{
-		onlyTransform: false,
-	})
-	if err != nil {
-		return callback, err
-	}
+func (s *SlbService) CreateHealthCheckCommonCall(req map[string]interface{}, isSetId bool) (callback ApiCall, err error) {
 	callback = ApiCall{
 		param:  &req,
 		action: "ConfigureHealthCheck",
 		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
 			conn := client.slbconn
+			if _, ok := (*(call.param))["ListenerId"]; !ok {
+				(*(call.param))["ListenerId"] = d.Get("listener_id")
+			}
 			logger.Debug(logger.RespFormat, call.action, *(call.param))
 			resp, err = conn.ConfigureHealthCheck(call.param)
 			return resp, err
 		},
 		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
 			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
-			id, err := getSdkValue("HealthCheckId", *resp)
-			if err != nil {
-				return err
+			if isSetId {
+				var id interface{}
+				id, err = getSdkValue("HealthCheckId", *resp)
+				if err != nil {
+					return err
+				}
+				d.SetId(id.(string))
 			}
-			d.SetId(id.(string))
 			return err
 		},
 	}
 	return callback, err
+}
+func (s *SlbService) CreateHealthCheckCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
+	if err != nil {
+		return callback, err
+	}
+	return s.CreateHealthCheckCommonCall(req, true)
 }
 
 func (s *SlbService) CreateHealthCheck(d *schema.ResourceData, r *schema.Resource) (err error) {
@@ -588,23 +828,9 @@ func (s *SlbService) CreateHealthCheck(d *schema.ResourceData, r *schema.Resourc
 	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
 
-func (s *SlbService) ModifyHealthCheckCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
-	transform := map[string]SdkReqTransform{
-		"health_check_state": {
-			forceUpdateParam: true,
-		},
-		"url_path": {
-			forceUpdateParam: true,
-		},
-	}
-	req, err := SdkRequestAutoMapping(d, r, true, transform, nil, SdkReqParameter{
-		onlyTransform: false,
-	})
-	if err != nil {
-		return callback, err
-	}
+func (s *SlbService) ModifyHealthCheckCommonCall(req map[string]interface{}, healthCheckId string) (callback ApiCall, err error) {
 	if len(req) > 0 {
-		req["HealthCheckId"] = d.Id()
+		req["HealthCheckId"] = healthCheckId
 		callback = ApiCall{
 			param:  &req,
 			action: "ModifyHealthCheck",
@@ -621,6 +847,27 @@ func (s *SlbService) ModifyHealthCheckCall(d *schema.ResourceData, r *schema.Res
 		}
 	}
 	return callback, err
+}
+
+func (s *SlbService) ModifyHealthCheckCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	transform := map[string]SdkReqTransform{
+		"health_check_state": {
+			forceUpdateParam: true,
+		},
+		"url_path": {
+			forceUpdateParam: true,
+		},
+	}
+	req, err := SdkRequestAutoMapping(d, r, true, transform, nil, SdkReqParameter{
+		onlyTransform: false,
+	})
+	if d.Get("listener_protocol") != "HTTPS" && d.Get("listener_protocol") != "HTTP" {
+		delete(req, "UrlPath")
+	}
+	if err != nil {
+		return callback, err
+	}
+	return s.ModifyHealthCheckCommonCall(req, d.Id())
 }
 
 func (s *SlbService) ModifyHealthCheck(d *schema.ResourceData, r *schema.Resource) (err error) {
@@ -748,6 +995,34 @@ func (s *SlbService) ReadAndSetLbRule(d *schema.ResourceData, r *schema.Resource
 	return err
 }
 
+func (s *SlbService) ReadAndSetLbRules(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "RuleId",
+			Type:    TransformWithN,
+		},
+		"host_header_id": {
+			mapping: "host-header-id",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadLbRules(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		idFiled:     "RuleId",
+		targetField: "lb_rules",
+		extra:       map[string]SdkResponseMapping{},
+	})
+}
+
 func (s *SlbService) CreateLbRuleCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
 	transform := map[string]SdkReqTransform{
 		"session": {
@@ -791,7 +1066,8 @@ func (s *SlbService) CreateLbRuleCall(d *schema.ResourceData, r *schema.Resource
 		},
 		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
 			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
-			id, err := getSdkValue("Rule.RuleId", *resp)
+			var id interface{}
+			id, err = getSdkValue("Rule.RuleId", *resp)
 			if err != nil {
 				return err
 			}
@@ -911,6 +1187,7 @@ func (s *SlbService) RemoveLbRule(d *schema.ResourceData) (err error) {
 }
 
 // start host header
+
 func (s *SlbService) ReadHostHeaders(condition map[string]interface{}) (data []interface{}, err error) {
 	var (
 		resp    *map[string]interface{}
@@ -949,7 +1226,7 @@ func (s *SlbService) ReadHostHeader(d *schema.ResourceData, hostHeaderId string)
 	req := map[string]interface{}{
 		"HostHeaderId.1": hostHeaderId,
 	}
-	results, err = s.ReadListeners(req)
+	results, err = s.ReadHostHeaders(req)
 	if err != nil {
 		return data, err
 	}
@@ -967,6 +1244,1541 @@ func (s *SlbService) ReadAndSetHostHeader(d *schema.ResourceData, r *schema.Reso
 	if err != nil {
 		return err
 	}
+	listenerId := data["ListenerId"].(string)
+	listener, err := s.ReadListener(nil, listenerId)
+	if err != nil {
+		return err
+	}
+	data["ListenerProtocol"] = listener["ListenerProtocol"]
 	SdkResponseAutoResourceData(d, r, data, nil)
 	return err
+}
+
+func (s *SlbService) ReadAndSetHostHeaders(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "HostHeaderId",
+			Type:    TransformWithN,
+		},
+		"listener_id": {
+			mapping: "listener-id",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadHostHeaders(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		idFiled:     "HostHeaderId",
+		targetField: "host_headers",
+		extra:       map[string]SdkResponseMapping{},
+	})
+}
+
+func (s *SlbService) CreateHostHeaderCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
+	if err != nil {
+		return callback, err
+	}
+	//获取一次监听器信息 1判定协议 2 校验是需要证书
+	vip, err := s.ReadListener(nil, req["ListenerId"].(string))
+	if err != nil {
+		return callback, err
+	}
+	if vip["ListenerProtocol"] != "HTTP" && vip["ListenerProtocol"] != "HTTPS" {
+		return callback, fmt.Errorf("Listener Protocol must HTTP or HTTPS when create a HostHeader ")
+	}
+	if _, ok := req["CertificateId"]; !ok && vip["ListenerProtocol"] == "HTTPS" {
+		return callback, fmt.Errorf("CertificateId must set because Listener Protocol is HTTPS when create a HostHeader ")
+	}
+	if vip["ListenerProtocol"] == "HTTP" {
+		delete(req, "CertificateId")
+	}
+
+	callback = ApiCall{
+		param:  &req,
+		action: "CreateHostHeader",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.CreateHostHeader(call.param)
+			return resp, err
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			id, err := getSdkValue("HostHeader.HostHeaderId", *resp)
+			if err != nil {
+				return err
+			}
+			d.SetId(id.(string))
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) CreateHostHeader(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.CreateHostHeaderCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
+}
+
+func (s *SlbService) ModifyHostHeaderCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	req, err := SdkRequestAutoMapping(d, r, true, nil, nil)
+	if err != nil {
+		return callback, err
+	}
+	if len(req) > 0 {
+		req["HostHeaderId"] = d.Id()
+		callback = ApiCall{
+			param:  &req,
+			action: "ModifyHostHeader",
+			executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+				conn := client.slbconn
+				logger.Debug(logger.RespFormat, call.action, *(call.param))
+				resp, err = conn.ModifyHostHeader(call.param)
+				return resp, err
+			},
+			afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+				logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+				return err
+			},
+		}
+	}
+	return callback, err
+}
+
+func (s *SlbService) ModifyHostHeader(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.ModifyHostHeaderCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
+}
+
+func (s *SlbService) RemoveHostHeaderCall(d *schema.ResourceData) (callback ApiCall, err error) {
+	removeReq := map[string]interface{}{
+		"HostHeaderId": d.Id(),
+	}
+	callback = ApiCall{
+		param:  &removeReq,
+		action: "DeleteHostHeader",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.DeleteHostHeader(call.param)
+			return resp, err
+		},
+		callError: func(d *schema.ResourceData, client *KsyunClient, call ApiCall, baseErr error) error {
+			return resource.Retry(15*time.Minute, func() *resource.RetryError {
+				_, callErr := s.ReadHostHeader(d, "")
+				if callErr != nil {
+					if notFoundError(callErr) {
+						return nil
+					} else {
+						return resource.NonRetryableError(fmt.Errorf("error on  reading host header when delete %q, %s", d.Id(), callErr))
+					}
+				}
+				_, callErr = call.executeCall(d, client, call)
+				if callErr == nil {
+					return nil
+				}
+				return resource.RetryableError(callErr)
+			})
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) RemoveHostHeader(d *schema.ResourceData) (err error) {
+	call, err := s.RemoveHostHeaderCall(d)
+	if err != nil {
+		return err
+	}
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
+}
+
+// start LoadBalancerAcl
+
+func (s *SlbService) ReadLoadBalancerAcls(condition map[string]interface{}) (data []interface{}, err error) {
+	var (
+		resp    *map[string]interface{}
+		results interface{}
+	)
+
+	return pageQuery(condition, "MaxResults", "Marker", 200, 1, func(condition map[string]interface{}) ([]interface{}, error) {
+		conn := s.client.slbconn
+		action := "DescribeLoadBalancerAcls"
+		logger.Debug(logger.ReqFormat, action, condition)
+		if condition == nil {
+			resp, err = conn.DescribeLoadBalancerAcls(nil)
+			if err != nil {
+				return data, err
+			}
+		} else {
+			resp, err = conn.DescribeLoadBalancerAcls(&condition)
+			if err != nil {
+				return data, err
+			}
+		}
+
+		results, err = getSdkValue("LoadBalancerAclSet", *resp)
+		if err != nil {
+			return data, err
+		}
+		data = results.([]interface{})
+		return data, err
+	})
+}
+
+func (s *SlbService) ReadLoadBalancerAcl(d *schema.ResourceData, loadBalancerAclId string) (data map[string]interface{}, err error) {
+	var (
+		results []interface{}
+	)
+	if loadBalancerAclId == "" {
+		loadBalancerAclId = d.Id()
+	}
+	req := map[string]interface{}{
+		"LoadBalancerAclId.1": loadBalancerAclId,
+	}
+	results, err = s.ReadLoadBalancerAcls(req)
+	if err != nil {
+		return data, err
+	}
+	for _, v := range results {
+		data = v.(map[string]interface{})
+	}
+	if len(data) == 0 {
+		return data, fmt.Errorf("LoadBalancerAcls %s not exist ", loadBalancerAclId)
+	}
+	return data, err
+}
+
+func (s *SlbService) ReadLoadBalancerAclEntry(d *schema.ResourceData, loadBalancerAclId string) (data map[string]interface{}, err error) {
+	acl, err := s.ReadLoadBalancerAcl(d, loadBalancerAclId)
+	if err != nil {
+		return data, err
+	}
+	num := int64(d.Get("rule_number").(int))
+	cidr := d.Get("cidr_block").(string)
+	found := false
+	for _, entry := range acl["LoadBalancerAclEntrySet"].([]interface{}) {
+		m := entry.(map[string]interface{})
+		if num == int64(m["RuleNumber"].(float64)) && cidr == m["CidrBlock"] {
+			found = true
+			data = m
+			break
+		}
+	}
+	if !found {
+		return data, fmt.Errorf("LoadBalancerAclEntry not exist")
+	}
+	return data, err
+}
+
+func (s *SlbService) ReadLoadBalancerAclAssociate(listenerId string, loadBalancerAclId string) (data map[string]interface{}, err error) {
+	var (
+		results []interface{}
+	)
+	req := map[string]interface{}{
+		"ListenerId.1": listenerId,
+	}
+	results, err = s.ReadListeners(req)
+	if err != nil {
+		return data, err
+	}
+	for _, v := range results {
+		data = v.(map[string]interface{})
+	}
+	if len(data) == 0 {
+		return data, fmt.Errorf(" LoadBalancerAclAssociate listener_id [%s] and load_balancer_acl_id [%s] not exist ",
+			listenerId, loadBalancerAclId)
+	}
+	if _, ok := data["LoadBalancerAclId"]; !ok || data["LoadBalancerAclId"] != loadBalancerAclId {
+		return data, fmt.Errorf(" LoadBalancerAclAssociate listener_id [%s] and load_balancer_acl_id [%s] not exist ",
+			listenerId, loadBalancerAclId)
+	}
+	return data, err
+}
+
+func (s *SlbService) ReadAndSetLoadBalancerAcl(d *schema.ResourceData, r *schema.Resource) (err error) {
+	data, err := s.ReadLoadBalancerAcl(d, "")
+	if err != nil {
+		return err
+	}
+	SdkResponseAutoResourceData(d, r, data, nil)
+	return err
+}
+
+func (s *SlbService) ReadAndSetLoadBalancerAclEntry(d *schema.ResourceData, r *schema.Resource) (err error) {
+	data, err := s.ReadLoadBalancerAclEntry(d, d.Get("load_balancer_acl_id").(string))
+	if err != nil {
+		return err
+	}
+	SdkResponseAutoResourceData(d, r, data, nil)
+	return err
+}
+
+func (s *SlbService) ReadAndSetLoadBalancerAclAssociate(d *schema.ResourceData, r *schema.Resource) (err error) {
+	data, err := s.ReadLoadBalancerAclAssociate(d.Get("listener_id").(string), d.Get("load_balancer_acl_id").(string))
+	if err != nil {
+		return err
+	}
+	SdkResponseAutoResourceData(d, r, data, nil)
+	return err
+}
+
+func (s *SlbService) ReadAndSetLoadBalancerAcls(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "LoadBalancerAclId",
+			Type:    TransformWithN,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadLoadBalancerAcls(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		idFiled:     "HostHeaderId",
+		targetField: "host_headers",
+		extra:       map[string]SdkResponseMapping{},
+	})
+}
+
+func (s *SlbService) CreateLoadBalancerAclCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	transform := map[string]SdkReqTransform{
+		"load_balancer_acl_entry_set": {Ignore: true},
+	}
+	req, err := SdkRequestAutoMapping(d, r, false, transform, nil, SdkReqParameter{
+		onlyTransform: false,
+	})
+	if err != nil {
+		return callback, err
+	}
+	callback = ApiCall{
+		param:  &req,
+		action: "CreateLoadBalancerAcl",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.CreateLoadBalancerAcl(call.param)
+			return resp, err
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			id, err := getSdkValue("LoadBalancerAcl.LoadBalancerAclId", *resp)
+			if err != nil {
+				return err
+			}
+			d.SetId(id.(string))
+			return d.Set("load_balancer_acl_id", d.Id())
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) CreateLoadBalancerAclEntryCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
+	if err != nil {
+		return callback, err
+	}
+	return s.CreateLoadBalancerAclEntryCommonCall(req, true)
+}
+
+func (s *SlbService) CreateLoadBalancerAclEntryWithAclCall(d *schema.ResourceData, r *schema.Resource) (callbacks []ApiCall, err error) {
+	if entries, ok := d.GetOk("load_balancer_acl_entry_set"); ok {
+		//check
+		if len(schema.NewSet(loadBalancerAclEntryNumberHash, entries.(*schema.Set).List()).List()) != len(entries.(*schema.Set).List()) {
+			return callbacks, fmt.Errorf("RuleNumber must unique ")
+		}
+		if len(schema.NewSet(loadBalancerAclEntryCidrHash, entries.(*schema.Set).List()).List()) != len(entries.(*schema.Set).List()) {
+			return callbacks, fmt.Errorf("CidrBlock must unique ")
+		}
+		for _, entry := range entries.(*schema.Set).List() {
+			var (
+				req      map[string]interface{}
+				callback ApiCall
+			)
+			transform := make(map[string]SdkReqTransform)
+			key := strconv.Itoa(loadBalancerAclEntryHash(entry))
+			for k, _ := range entry.(map[string]interface{}) {
+				key := "load_balancer_acl_entry_set." + key + "." + k
+				transform[key] = SdkReqTransform{mapping: Downline2Hump(k)}
+			}
+			logger.Debug(logger.RespFormat, "Demo", d.Get("load_balancer_acl_entry_set"))
+			req, err = SdkRequestAutoMapping(d, r, false, transform, nil)
+			if err != nil {
+				return callbacks, err
+			}
+			logger.Debug(logger.RespFormat, "Demo", req)
+			callback, err = s.CreateLoadBalancerAclEntryCommonCall(req, false)
+			if err != nil {
+				return callbacks, err
+			}
+			callbacks = append(callbacks, callback)
+		}
+	}
+	return callbacks, err
+}
+
+func (s *SlbService) CreateLoadBalancerAclEntryCommonCall(req map[string]interface{}, isSetId bool) (callback ApiCall, err error) {
+	callback = ApiCall{
+		param:  &req,
+		action: "CreateLoadBalancerAclEntry",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			(*(call.param))["LoadBalancerAclId"] = d.Get("load_balancer_acl_id")
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.CreateLoadBalancerAclEntry(call.param)
+			return resp, err
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			if isSetId {
+				_, err = s.ReadLoadBalancerAcl(d, (*(call.param))["LoadBalancerAclId"].(string))
+				if err != nil {
+					return err
+				}
+				d.SetId((*(call.param))["LoadBalancerAclId"].(string) + ":" + strconv.Itoa(d.Get("rule_number").(int)) + ":" + d.Get("cidr_block").(string))
+			}
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) CreateLoadBalancerAclAssociateCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
+	return s.CreateLoadBalancerAclAssociateCommonCall(req, true)
+}
+
+func (s *SlbService) CreateLoadBalancerAclAssociateWithListenerCall(d *schema.ResourceData, r *schema.Resource, loadBalancerAclId string) (callback ApiCall, err error) {
+	req := map[string]interface{}{
+		"LoadBalancerAclId": loadBalancerAclId,
+	}
+	return s.CreateLoadBalancerAclAssociateCommonCall(req, false)
+}
+
+func (s *SlbService) CreateLoadBalancerAclAssociateCommonCall(req map[string]interface{}, isSetId bool) (callback ApiCall, err error) {
+	callback = ApiCall{
+		param:  &req,
+		action: "AssociateLoadBalancerAcl",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			(*(call.param))["ListenerId"] = d.Get("listener_id")
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.AssociateLoadBalancerAcl(call.param)
+			return resp, err
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			if isSetId {
+				d.SetId(d.Get("listener_id").(string) + ":" + d.Get("load_balancer_acl_id").(string))
+			}
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) CreateLoadBalancerAcl(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.CreateLoadBalancerAclCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	entries, err := s.CreateLoadBalancerAclEntryWithAclCall(d, r)
+	if err != nil {
+		return err
+	}
+	for _, entryCall := range entries {
+		callbacks = append(callbacks, entryCall)
+	}
+	return ksyunApiCallNew(callbacks, d, s.client, false)
+}
+
+func (s *SlbService) CreateLoadBalancerAclEntry(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.CreateLoadBalancerAclEntryCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
+}
+
+func (s *SlbService) CreateLoadBalancerAclAssociate(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.CreateLoadBalancerAclAssociateCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
+}
+
+func (s *SlbService) ModifyLoadBalancerAclCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	transform := map[string]SdkReqTransform{
+		"load_balancer_acl_name": {},
+	}
+	req, err := SdkRequestAutoMapping(d, r, true, transform, nil)
+	if err != nil {
+		return callback, err
+	}
+	if len(req) > 0 {
+		req["LoadBalancerAclId"] = d.Id()
+		callback = ApiCall{
+			param:  &req,
+			action: "ModifyLoadBalancerAcl",
+			executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+				conn := client.slbconn
+				logger.Debug(logger.RespFormat, call.action, *(call.param))
+				resp, err = conn.ModifyLoadBalancerAcl(call.param)
+				return resp, err
+			},
+			afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+				logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+				return err
+			},
+		}
+	}
+	return callback, err
+}
+
+func (s *SlbService) ModifyLoadBalancerAclEntryCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	req, err := SdkRequestAutoMapping(d, r, true, nil, nil)
+	if err != nil {
+		return callback, err
+	}
+	if len(req) > 0 {
+		req["LoadBalancerAclEntryId"] = d.Get("load_balancer_acl_entry_id")
+		return s.ModifyLoadBalancerAclEntryCommonCall(req)
+	}
+	return callback, err
+}
+
+func (s *SlbService) ModifyLoadBalancerAclEntryWithAclCall(d *schema.ResourceData, r *schema.Resource) (callbacks []ApiCall, err error) {
+	if d.HasChange("load_balancer_acl_entry_set") {
+		o, n := d.GetChange("load_balancer_acl_entry_set")
+		if o == nil {
+			o = new(schema.Set)
+		}
+		if n == nil {
+			n = new(schema.Set)
+		}
+		os := o.(*schema.Set)
+		ns := n.(*schema.Set)
+		//check change is valid
+		if len(schema.NewSet(loadBalancerAclEntryNumberHash, ns.Difference(os).List()).List()) != len(ns.Difference(os).List()) {
+			return callbacks, fmt.Errorf("RuleNumber must unique ")
+		}
+		if len(schema.NewSet(loadBalancerAclEntryCidrHash, ns.Difference(os).List()).List()) != len(ns.Difference(os).List()) {
+			return callbacks, fmt.Errorf("CidrBlock must unique ")
+		}
+		//generate new hashcode without can modify field
+		mayAdd := schema.NewSet(loadBalancerAclEntrySimpleHash, ns.Difference(os).List())
+		mayRemove := schema.NewSet(loadBalancerAclEntrySimpleHash, os.Difference(ns).List())
+		addCache := make(map[int]interface{})
+		for _, entry := range mayAdd.List() {
+			index := loadBalancerAclEntrySimpleHash(entry)
+			addCache[index] = entry
+		}
+		//compare hashcode  can modify field
+		//need add entries
+		add := mayAdd.Difference(mayRemove)
+		//need remove entries
+		remove := mayRemove.Difference(mayAdd)
+		//need modify entries
+		modify := mayRemove.Difference(remove)
+		//process modify
+		if len(modify.List()) > 0 {
+			for _, entry := range modify.List() {
+				var (
+					callback ApiCall
+				)
+				index := loadBalancerAclEntrySimpleHash(entry)
+				req := make(map[string]interface{})
+				req["RuleNumber"] = addCache[index].(map[string]interface{})["rule_number"]
+				req["RuleAction"] = addCache[index].(map[string]interface{})["rule_action"]
+				req["LoadBalancerAclEntryId"] = entry.(map[string]interface{})["load_balancer_acl_entry_id"]
+				logger.Debug(logger.ReqFormat, "DemoModify", req)
+				callback, err = s.ModifyLoadBalancerAclEntryCommonCall(req)
+				if err != nil {
+					return callbacks, err
+				}
+				callbacks = append(callbacks, callback)
+			}
+		}
+		//process remove
+		if len(remove.List()) > 0 {
+			for _, entry := range remove.List() {
+				var (
+					callback ApiCall
+				)
+				callback, err = s.RemoveLoadBalancerAclEntryCommonCall(d.Id(), entry.(map[string]interface{})["load_balancer_acl_entry_id"].(string))
+				if err != nil {
+					return callbacks, err
+				}
+				callbacks = append(callbacks, callback)
+			}
+		}
+		//process add
+		if len(add.List()) > 0 {
+			for _, entry := range add.List() {
+				var (
+					req      map[string]interface{}
+					callback ApiCall
+				)
+				index := loadBalancerAclEntryHash(entry)
+				transform := make(map[string]SdkReqTransform)
+				for k, _ := range entry.(map[string]interface{}) {
+					key := "load_balancer_acl_entry_set." + strconv.Itoa(index) + "." + k
+					transform[key] = SdkReqTransform{mapping: Downline2Hump(k)}
+				}
+				req, err = SdkRequestAutoMapping(d, r, false, transform, nil)
+				if err != nil {
+					return callbacks, err
+				}
+				callback, err = s.CreateLoadBalancerAclEntryCommonCall(req, false)
+				if err != nil {
+					return callbacks, err
+				}
+				callbacks = append(callbacks, callback)
+			}
+		}
+
+	}
+	return callbacks, err
+}
+
+func (s *SlbService) ModifyLoadBalancerAclEntryCommonCall(req map[string]interface{}) (callback ApiCall, err error) {
+	callback = ApiCall{
+		param:  &req,
+		action: "ModifyLoadBalancerAclEntry",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.ModifyLoadBalancerAclEntry(call.param)
+			return resp, err
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) ModifyLoadBalancerAcl(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.ModifyLoadBalancerAclCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	entries, err := s.ModifyLoadBalancerAclEntryWithAclCall(d, r)
+	if err != nil {
+		return err
+	}
+	for _, entryCall := range entries {
+		callbacks = append(callbacks, entryCall)
+	}
+	return ksyunApiCallNew(callbacks, d, s.client, true)
+}
+
+func (s *SlbService) ModifyLoadBalancerAclEntry(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.ModifyLoadBalancerAclEntryCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
+}
+
+func (s *SlbService) RemoveLoadBalancerAclCall(d *schema.ResourceData) (callback ApiCall, err error) {
+	removeReq := map[string]interface{}{
+		"LoadBalancerAclId": d.Id(),
+	}
+	callback = ApiCall{
+		param:  &removeReq,
+		action: "DeleteLoadBalancerAcl",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.DeleteLoadBalancerAcl(call.param)
+			return resp, err
+		},
+		callError: func(d *schema.ResourceData, client *KsyunClient, call ApiCall, baseErr error) error {
+			return resource.Retry(15*time.Minute, func() *resource.RetryError {
+				_, callErr := s.ReadLoadBalancerAcl(d, "")
+				if callErr != nil {
+					if notFoundError(callErr) {
+						return nil
+					} else {
+						return resource.NonRetryableError(fmt.Errorf("error on  reading lb acl when delete %q, %s", d.Id(), callErr))
+					}
+				}
+				_, callErr = call.executeCall(d, client, call)
+				if callErr == nil {
+					return nil
+				}
+				return resource.RetryableError(callErr)
+			})
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) RemoveLoadBalancerAclEntryCommonCall(aclId string, entryId string) (callback ApiCall, err error) {
+	req := map[string]interface{}{
+		"LoadBalancerAclId":      aclId,
+		"LoadBalancerAclEntryId": entryId,
+	}
+	callback = ApiCall{
+		param:  &req,
+		action: "DeleteLoadBalancerAclEntry",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.DeleteLoadBalancerAclEntry(call.param)
+			return resp, err
+		},
+		callError: func(d *schema.ResourceData, client *KsyunClient, call ApiCall, baseErr error) error {
+			return resource.Retry(15*time.Minute, func() *resource.RetryError {
+				data, callErr := s.ReadLoadBalancerAcl(d, aclId)
+				if callErr != nil {
+					if notFoundError(callErr) {
+						return nil
+					} else {
+						return resource.NonRetryableError(fmt.Errorf("error on  reading lb rulr entry when delete %q, %s", d.Id(), callErr))
+					}
+				}
+				if len(data["LoadBalancerAclEntrySet"].([]interface{})) == 0 {
+					return nil
+				} else {
+					found := false
+					for _, item := range data["LoadBalancerAclEntrySet"].([]interface{}) {
+						if item.(map[string]interface{})["LoadBalancerAclEntryId"] == entryId {
+							found = true
+							break
+						}
+					}
+					if !found {
+						return nil
+					}
+				}
+
+				_, callErr = call.executeCall(d, client, call)
+				if callErr == nil {
+					return nil
+				}
+				return resource.RetryableError(callErr)
+			})
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) RemoveLoadBalancerAclAssociateCommonCall(listenerId string, loadBalancerAclId string) (callback ApiCall, err error) {
+	removeReq := map[string]interface{}{
+		"ListenerId": listenerId,
+	}
+	callback = ApiCall{
+		param:  &removeReq,
+		action: "DisassociateLoadBalancerAcl",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.DisassociateLoadBalancerAcl(call.param)
+			return resp, err
+		},
+		callError: func(d *schema.ResourceData, client *KsyunClient, call ApiCall, baseErr error) error {
+			return resource.Retry(15*time.Minute, func() *resource.RetryError {
+				_, callErr := s.ReadLoadBalancerAclAssociate(listenerId, loadBalancerAclId)
+				if callErr != nil {
+					if notFoundError(callErr) {
+						return nil
+					} else {
+						return resource.NonRetryableError(fmt.Errorf("error on  reading lb acl when delete %q, %s", d.Id(), callErr))
+					}
+				}
+				_, callErr = call.executeCall(d, client, call)
+				if callErr == nil {
+					return nil
+				}
+				return resource.RetryableError(callErr)
+			})
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) RemoveLoadBalancerAcl(d *schema.ResourceData) (err error) {
+	call, err := s.RemoveLoadBalancerAclCall(d)
+	if err != nil {
+		return err
+	}
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
+}
+
+func (s *SlbService) RemoveLoadBalancerAclEntry(d *schema.ResourceData) (err error) {
+	call, err := s.RemoveLoadBalancerAclEntryCommonCall(d.Get("load_balancer_acl_id").(string), d.Get("load_balancer_acl_entry_id").(string))
+	if err != nil {
+		return err
+	}
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
+}
+
+func (s *SlbService) RemoveLoadBalancerAclAssociate(d *schema.ResourceData) (err error) {
+	call, err := s.RemoveLoadBalancerAclAssociateCommonCall(d.Get("listener_id").(string), d.Get("load_balancer_acl_id").(string))
+	if err != nil {
+		return err
+	}
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
+}
+
+// start RealServer
+
+func (s *SlbService) ReadRealServers(condition map[string]interface{}) (data []interface{}, err error) {
+	var (
+		resp    *map[string]interface{}
+		results interface{}
+	)
+	conn := s.client.slbconn
+	action := "DescribeInstancesWithListener"
+	logger.Debug(logger.ReqFormat, action, condition)
+	if condition == nil {
+		resp, err = conn.DescribeInstancesWithListener(nil)
+		if err != nil {
+			return data, err
+		}
+	} else {
+		resp, err = conn.DescribeInstancesWithListener(&condition)
+		if err != nil {
+			return data, err
+		}
+	}
+
+	results, err = getSdkValue("RealServerSet", *resp)
+	if err != nil {
+		return data, err
+	}
+	data = results.([]interface{})
+	return data, err
+}
+
+func (s *SlbService) ReadRealServer(d *schema.ResourceData, registerId string) (data map[string]interface{}, err error) {
+	var (
+		results []interface{}
+	)
+	if registerId == "" {
+		registerId = d.Id()
+	}
+	req := map[string]interface{}{
+		"RegisterId.1": registerId,
+	}
+	results, err = s.ReadRealServers(req)
+	if err != nil {
+		return data, err
+	}
+	for _, v := range results {
+		data = v.(map[string]interface{})
+	}
+	if len(data) == 0 {
+		return data, fmt.Errorf("Real Server %s not exist ", registerId)
+	}
+	return data, err
+}
+
+func (s *SlbService) ReadAndSetRealServer(d *schema.ResourceData, r *schema.Resource) (err error) {
+	data, err := s.ReadRealServer(d, "")
+	if err != nil {
+		return err
+	}
+	listenerId := data["ListenerId"].(string)
+	listener, err := s.ReadListener(nil, listenerId)
+	if err != nil {
+		return err
+	}
+	data["ListenerMethod"] = listener["Method"]
+	SdkResponseAutoResourceData(d, r, data, nil)
+	return err
+}
+
+func (s *SlbService) ReadAndSetRealServers(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "RegisterId",
+			Type:    TransformWithN,
+		},
+		"listener_id": {
+			mapping: "listener-id",
+			Type:    TransformWithFilter,
+		},
+		"real_server_ip": {
+			mapping: "real-server-ip",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadRealServers(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		idFiled:     "RegisterId",
+		targetField: "servers",
+		extra:       map[string]SdkResponseMapping{},
+	})
+}
+
+func (s *SlbService) CreateRealServerCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
+	if err != nil {
+		return callback, err
+	}
+	//获取一次监听器信息 判定method类型
+	vip, err := s.ReadListener(nil, req["ListenerId"].(string))
+	if err != nil {
+		return callback, err
+	}
+	if vip["Method"] != "MasterSlave" {
+		delete(req, "MasterSlaveType")
+	}
+	callback = ApiCall{
+		param:  &req,
+		action: "RegisterInstancesWithListener",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.RegisterInstancesWithListener(call.param)
+			return resp, err
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			id, err := getSdkValue("RegisterId", *resp)
+			if err != nil {
+				return err
+			}
+			d.SetId(id.(string))
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) CreateRealServer(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.CreateRealServerCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
+}
+
+func (s *SlbService) ModifyRealServerCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	req, err := SdkRequestAutoMapping(d, r, true, nil, nil)
+	if err != nil {
+		return callback, err
+	}
+	if len(req) > 0 {
+		req["RegisterId"] = d.Id()
+		callback = ApiCall{
+			param:  &req,
+			action: "ModifyInstancesWithListener",
+			executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+				conn := client.slbconn
+				logger.Debug(logger.RespFormat, call.action, *(call.param))
+				resp, err = conn.ModifyInstancesWithListener(call.param)
+				return resp, err
+			},
+			afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+				logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+				return err
+			},
+		}
+	}
+	return callback, err
+}
+
+func (s *SlbService) ModifyRealServer(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.ModifyRealServerCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
+}
+
+func (s *SlbService) RemoveRealServerCall(d *schema.ResourceData) (callback ApiCall, err error) {
+	removeReq := map[string]interface{}{
+		"RegisterId": d.Id(),
+	}
+	callback = ApiCall{
+		param:  &removeReq,
+		action: "DeregisterInstancesFromListener",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.DeregisterInstancesFromListener(call.param)
+			return resp, err
+		},
+		callError: func(d *schema.ResourceData, client *KsyunClient, call ApiCall, baseErr error) error {
+			return resource.Retry(15*time.Minute, func() *resource.RetryError {
+				_, callErr := s.ReadRealServer(d, "")
+				if callErr != nil {
+					if notFoundError(callErr) {
+						return nil
+					} else {
+						return resource.NonRetryableError(fmt.Errorf("error on  reading real server when delete %q, %s", d.Id(), callErr))
+					}
+				}
+				_, callErr = call.executeCall(d, client, call)
+				if callErr == nil {
+					return nil
+				}
+				return resource.RetryableError(callErr)
+			})
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) RemoveRealServer(d *schema.ResourceData) (err error) {
+	call, err := s.RemoveRealServerCall(d)
+	if err != nil {
+		return err
+	}
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
+}
+
+// start BackendServerGroup
+
+func (s *SlbService) ReadBackendServerGroups(condition map[string]interface{}) (data []interface{}, err error) {
+	var (
+		resp    *map[string]interface{}
+		results interface{}
+	)
+	conn := s.client.slbconn
+	action := "DescribeBackendServerGroups"
+	logger.Debug(logger.ReqFormat, action, condition)
+	if condition == nil {
+		resp, err = conn.DescribeBackendServerGroups(nil)
+		if err != nil {
+			return data, err
+		}
+	} else {
+		resp, err = conn.DescribeBackendServerGroups(&condition)
+		if err != nil {
+			return data, err
+		}
+	}
+
+	results, err = getSdkValue("BackendServerGroupSet", *resp)
+	if err != nil {
+		return data, err
+	}
+	data = results.([]interface{})
+	return data, err
+}
+
+func (s *SlbService) ReadBackendServerGroup(d *schema.ResourceData, backendServerGroupId string) (data map[string]interface{}, err error) {
+	var (
+		results []interface{}
+	)
+	if backendServerGroupId == "" {
+		backendServerGroupId = d.Id()
+	}
+	req := map[string]interface{}{
+		"BackendServerGroupId.1": backendServerGroupId,
+	}
+	results, err = s.ReadBackendServerGroups(req)
+	if err != nil {
+		return data, err
+	}
+	for _, v := range results {
+		data = v.(map[string]interface{})
+	}
+	if len(data) == 0 {
+		return data, fmt.Errorf("BackendServerGroup %s not exist ", backendServerGroupId)
+	}
+	return data, err
+}
+
+func (s *SlbService) ReadAndSetBackendServerGroup(d *schema.ResourceData, r *schema.Resource) (err error) {
+	data, err := s.ReadBackendServerGroup(d, "")
+	if err != nil {
+		return err
+	}
+	SdkResponseAutoResourceData(d, r, data, nil)
+	return err
+}
+
+func (s *SlbService) ReadAndSetBackendServerGroups(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "BackendServerGroupId",
+			Type:    TransformWithN,
+		},
+		"vpc_id": {
+			mapping: "vpc-id",
+			Type:    TransformWithFilter,
+		},
+		"backend_server_group_type": {
+			mapping: "backend-server-group-type",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadBackendServerGroups(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		idFiled:     "BackendServerGroupId",
+		targetField: "backend_server_groups",
+		extra:       map[string]SdkResponseMapping{},
+	})
+}
+
+func (s *SlbService) CreateBackendServerGroupCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	transform := map[string]SdkReqTransform{
+		"health_check": {
+			Type: TransformListUnique,
+		},
+	}
+	req, err := SdkRequestAutoMapping(d, r, false, transform, nil, SdkReqParameter{
+		onlyTransform: false,
+	})
+	if err != nil {
+		return callback, err
+	}
+	//特殊处理下"HealthCheck."
+	for k, v := range req {
+		if strings.HasPrefix(k, "HealthCheck.") {
+			req[strings.Replace(k, "HealthCheck.", "", -1)] = v
+			delete(req, k)
+		}
+	}
+	if _, ok := req["UrlPath"]; !ok && req["BackendServerGroupType"] == "Mirror" {
+		return callback, fmt.Errorf("BackendServerGroupType is Mirror must set HealthCheck")
+	}
+	callback = ApiCall{
+		param:  &req,
+		action: "CreateBackendServerGroup",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.CreateBackendServerGroup(call.param)
+			return resp, err
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			id, err := getSdkValue("BackendServerGroup.BackendServerGroupId", *resp)
+			if err != nil {
+				return err
+			}
+			d.SetId(id.(string))
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) CreateBackendServerGroup(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.CreateBackendServerGroupCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
+}
+
+func (s *SlbService) ModifyBackendServerGroupCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	transform := map[string]SdkReqTransform{
+		"backend_server_group_name": {},
+	}
+	req, err := SdkRequestAutoMapping(d, r, true, transform, nil)
+	if err != nil {
+		return callback, err
+	}
+	if len(req) > 0 {
+		req["BackendServerGroupId"] = d.Id()
+		callback = ApiCall{
+			param:  &req,
+			action: "ModifyBackendServerGroup",
+			executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+				conn := client.slbconn
+				logger.Debug(logger.RespFormat, call.action, *(call.param))
+				resp, err = conn.ModifyBackendServerGroup(call.param)
+				return resp, err
+			},
+			afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+				logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+				return err
+			},
+		}
+	}
+	return callback, err
+}
+
+func (s *SlbService) ModifyBackendServerGroupHealthCheckCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	transform := map[string]SdkReqTransform{
+		"health_check": {
+			Type: TransformListUnique,
+		},
+	}
+	req, err := SdkRequestAutoMapping(d, r, true, transform, nil)
+	if err != nil {
+		return callback, err
+	}
+	//特殊处理下"HealthCheck."
+	for k, v := range req {
+		if strings.HasPrefix(k, "HealthCheck.") {
+			req[strings.Replace(k, "HealthCheck.", "", -1)] = v
+			delete(req, k)
+		}
+	}
+	if len(req) > 0 {
+		req["BackendServerGroupId"] = d.Id()
+		callback = ApiCall{
+			param:  &req,
+			action: "ModifyBackendServerGroupHealthCheck",
+			executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+				conn := client.slbconn
+				logger.Debug(logger.RespFormat, call.action, *(call.param))
+				resp, err = conn.ModifyBackendServerGroupHealthCheck(call.param)
+				return resp, err
+			},
+			afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+				logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+				return err
+			},
+		}
+	}
+	return callback, err
+}
+
+func (s *SlbService) ModifyBackendServerGroup(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.ModifyBackendServerGroupCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	healthCheckCall, err := s.ModifyBackendServerGroupHealthCheckCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, healthCheckCall)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
+}
+
+func (s *SlbService) RemoveBackendServerGroupCall(d *schema.ResourceData) (callback ApiCall, err error) {
+	removeReq := map[string]interface{}{
+		"BackendServerGroupId": d.Id(),
+	}
+	callback = ApiCall{
+		param:  &removeReq,
+		action: "DeleteBackendServerGroup",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.DeleteBackendServerGroup(call.param)
+			return resp, err
+		},
+		callError: func(d *schema.ResourceData, client *KsyunClient, call ApiCall, baseErr error) error {
+			return resource.Retry(15*time.Minute, func() *resource.RetryError {
+				_, callErr := s.ReadBackendServerGroup(d, "")
+				if callErr != nil {
+					if notFoundError(callErr) {
+						return nil
+					} else {
+						return resource.NonRetryableError(fmt.Errorf("error on  reading backend server group when delete %q, %s", d.Id(), callErr))
+					}
+				}
+				_, callErr = call.executeCall(d, client, call)
+				if callErr == nil {
+					return nil
+				}
+				return resource.RetryableError(callErr)
+			})
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) RemoveBackendServerGroup(d *schema.ResourceData) (err error) {
+	call, err := s.RemoveBackendServerGroupCall(d)
+	if err != nil {
+		return err
+	}
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
+}
+
+// start backend server group server
+
+func (s *SlbService) ReadBackendServers(condition map[string]interface{}) (data []interface{}, err error) {
+	var (
+		resp    *map[string]interface{}
+		results interface{}
+	)
+	conn := s.client.slbconn
+	action := "DescribeBackendServers"
+	logger.Debug(logger.ReqFormat, action, condition)
+	if condition == nil {
+		resp, err = conn.DescribeBackendServers(nil)
+		if err != nil {
+			return data, err
+		}
+	} else {
+		resp, err = conn.DescribeBackendServers(&condition)
+		if err != nil {
+			return data, err
+		}
+	}
+
+	results, err = getSdkValue("BackendServerSet", *resp)
+	if err != nil {
+		return data, err
+	}
+	data = results.([]interface{})
+	return data, err
+}
+
+func (s *SlbService) ReadBackendServer(d *schema.ResourceData, registerId string) (data map[string]interface{}, err error) {
+	var (
+		results []interface{}
+	)
+	if registerId == "" {
+		registerId = d.Id()
+	}
+	req := map[string]interface{}{
+		"RegisterId.1": registerId,
+	}
+	results, err = s.ReadBackendServers(req)
+	if err != nil {
+		return data, err
+	}
+	for _, v := range results {
+		data = v.(map[string]interface{})
+	}
+	if len(data) == 0 {
+		return data, fmt.Errorf("BackendServer %s not exist ", registerId)
+	}
+	return data, err
+}
+
+func (s *SlbService) ReadAndSetBackendServer(d *schema.ResourceData, r *schema.Resource) (err error) {
+	data, err := s.ReadBackendServer(d, "")
+	if err != nil {
+		return err
+	}
+	SdkResponseAutoResourceData(d, r, data, nil)
+	return err
+}
+
+func (s *SlbService) ReadAndSetBackendServers(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "RegisterId",
+			Type:    TransformWithN,
+		},
+		"backend_server_group_id": {
+			mapping: "backend-server-group-id",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadBackendServers(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		idFiled:     "RegisterId",
+		targetField: "register_backend_servers",
+		extra:       map[string]SdkResponseMapping{},
+	})
+}
+
+func (s *SlbService) CreateBackendServerCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	req, err := SdkRequestAutoMapping(d, r, false, nil, nil)
+	if err != nil {
+		return callback, err
+	}
+	callback = ApiCall{
+		param:  &req,
+		action: "RegisterBackendServer",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.RegisterBackendServer(call.param)
+			return resp, err
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			id, err := getSdkValue("BackendServer.RegisterId", *resp)
+			if err != nil {
+				return err
+			}
+			d.SetId(id.(string))
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) CreateBackendServer(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.CreateBackendServerCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
+}
+
+func (s *SlbService) ModifyBackendServerCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
+	req, err := SdkRequestAutoMapping(d, r, true, nil, nil)
+	if err != nil {
+		return callback, err
+	}
+	if len(req) > 0 {
+		req["RegisterId"] = d.Id()
+		callback = ApiCall{
+			param:  &req,
+			action: "ModifyBackendServer",
+			executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+				conn := client.slbconn
+				logger.Debug(logger.RespFormat, call.action, *(call.param))
+				resp, err = conn.ModifyBackendServer(call.param)
+				return resp, err
+			},
+			afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+				logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+				return err
+			},
+		}
+	}
+	return callback, err
+}
+
+func (s *SlbService) ModifyBackendServer(d *schema.ResourceData, r *schema.Resource) (err error) {
+	var callbacks []ApiCall
+	call, err := s.ModifyBackendServerCall(d, r)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, call)
+	return ksyunApiCallNew(callbacks, d, s.client, true)
+}
+
+func (s *SlbService) RemoveBackendServerCall(d *schema.ResourceData) (callback ApiCall, err error) {
+	removeReq := map[string]interface{}{
+		"RegisterId": d.Id(),
+	}
+	callback = ApiCall{
+		param:  &removeReq,
+		action: "DeregisterBackendServer",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.slbconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.DeregisterBackendServer(call.param)
+			return resp, err
+		},
+		callError: func(d *schema.ResourceData, client *KsyunClient, call ApiCall, baseErr error) error {
+			return resource.Retry(15*time.Minute, func() *resource.RetryError {
+				_, callErr := s.ReadBackendServer(d, "")
+				if callErr != nil {
+					if notFoundError(callErr) {
+						return nil
+					} else {
+						return resource.NonRetryableError(fmt.Errorf("error on  reading backend server when delete %q, %s", d.Id(), callErr))
+					}
+				}
+				_, callErr = call.executeCall(d, client, call)
+				if callErr == nil {
+					return nil
+				}
+				return resource.RetryableError(callErr)
+			})
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			return err
+		},
+	}
+	return callback, err
+}
+
+func (s *SlbService) RemoveBackendServer(d *schema.ResourceData) (err error) {
+	call, err := s.RemoveBackendServerCall(d)
+	if err != nil {
+		return err
+	}
+	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }

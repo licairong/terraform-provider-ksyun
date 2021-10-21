@@ -103,13 +103,8 @@ func dataSourceKsyunListeners() *schema.Resource {
 							Computed: true,
 						},
 
-						"band_width_out": {
-							Type:     schema.TypeInt,
-							Computed: true,
-						},
-
-						"band_width_in": {
-							Type:     schema.TypeInt,
+						"load_balancer_acl_id": {
+							Type:     schema.TypeString,
 							Computed: true,
 						},
 
@@ -182,7 +177,6 @@ func dataSourceKsyunListeners() *schema.Resource {
 									},
 								},
 							},
-							//			Set: resourceKscListenerSessionHash,
 						},
 						"real_server": {
 							Type: schema.TypeList,
@@ -234,36 +228,4 @@ func dataSourceKsyunListeners() *schema.Resource {
 func dataSourceKsyunListenersRead(d *schema.ResourceData, meta interface{}) error {
 	slbService := SlbService{meta.(*KsyunClient)}
 	return slbService.ReadAndSetListeners(d, dataSourceKsyunListeners())
-}
-
-func dataSourceKsyunListenersSave(d *schema.ResourceData, result []map[string]interface{}) error {
-	resource := dataSourceKsyunListeners()
-	targetName := "listeners"
-	_, _, err := SdkSliceMapping(d, result, SdkSliceData{
-		IdField: "ListenerId",
-		IdMappingFunc: func(idField string, item map[string]interface{}) string {
-			return item[idField].(string)
-		},
-		SliceMappingFunc: func(item map[string]interface{}) map[string]interface{} {
-			return SdkResponseAutoMapping(resource, targetName, item, nil, nil)
-		},
-		TargetName: targetName,
-	})
-	return err
-}
-
-func dealListenrData(datas []map[string]interface{}) {
-	for k, v := range datas {
-		for k1, v1 := range v {
-			switch k1 {
-			case "health_check":
-				datas[k]["health_check"] = GetSubSliceDByRep([]interface{}{v1}, healthCheckKeys)
-			case "real_server":
-				vv := v1.([]interface{})
-				datas[k]["real_server"] = GetSubSliceDByRep(vv, serverKeys)
-			case "session":
-				datas[k]["session"] = GetSubSliceDByRep([]interface{}{v1}, sessionKeys)
-			}
-		}
-	}
 }

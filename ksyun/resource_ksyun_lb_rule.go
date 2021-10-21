@@ -4,10 +4,18 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
-	"github.com/terraform-providers/terraform-provider-ksyun/logger"
 )
 
 func resourceKsyunSlbRule() *schema.Resource {
+	entry := resourceKsyunHealthCheck().Schema
+	for k, v := range entry {
+		if k == "listener_id" {
+			delete(entry, k)
+		} else {
+			v.ForceNew = false
+			v.DiffSuppressFunc = nil
+		}
+	}
 	return &schema.Resource{
 		Create: resourceKsyunSlbRuleCreate,
 		Read:   resourceKsyunSlbRuleRead,
@@ -55,61 +63,7 @@ func resourceKsyunSlbRule() *schema.Resource {
 				Type:     schema.TypeList,
 				MaxItems: 1,
 				Elem: &schema.Resource{
-					Schema: map[string]*schema.Schema{
-						"health_check_id": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"health_check_state": {
-							Type:     schema.TypeString,
-							Optional: true,
-							ValidateFunc: validation.StringInSlice([]string{
-								"start",
-								"stop",
-							}, false),
-							Default: "start",
-						},
-						"timeout": {
-							Type:         schema.TypeInt,
-							Optional:     true,
-							ValidateFunc: validation.IntBetween(1, 3600),
-							Default:      4,
-						},
-						"healthy_threshold": {
-							Type:         schema.TypeInt,
-							Optional:     true,
-							ValidateFunc: validation.IntBetween(1, 10),
-							Default:      5,
-						},
-						"interval": {
-							Type:         schema.TypeInt,
-							Optional:     true,
-							ValidateFunc: validation.IntBetween(1, 3600),
-							Default:      5,
-						},
-
-						"unhealthy_threshold": {
-							Type:         schema.TypeInt,
-							Optional:     true,
-							ValidateFunc: validation.IntBetween(1, 10),
-							Default:      4,
-						},
-						"url_path": {
-							Type:     schema.TypeString,
-							Optional: true,
-							Default:  "/",
-						},
-						"host_name": {
-							Type:     schema.TypeString,
-							Optional: true,
-							Computed: true,
-						},
-						"is_default_host_name": {
-							Type:     schema.TypeBool,
-							Optional: true,
-							Default:  false,
-						},
-					},
+					Schema: entry,
 				},
 				Optional:         true,
 				Computed:         true,
@@ -177,7 +131,6 @@ func resourceKsyunSlbRuleCreate(d *schema.ResourceData, meta interface{}) (err e
 }
 
 func resourceKsyunSlbRuleRead(d *schema.ResourceData, meta interface{}) (err error) {
-	logger.Debug(logger.RespFormat, "ModifySlbRule", "read")
 	slbService := SlbService{meta.(*KsyunClient)}
 	err = slbService.ReadAndSetLbRule(d, resourceKsyunSlbRule())
 	if err != nil {

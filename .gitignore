@@ -3,3 +3,6 @@ bin/
 terraform-provider-ksyun
 .terraform/
 *.tfstate
+*.tfstate.*
+output_result
+*.log

@@ -59,6 +59,7 @@ func resourceKsyunHealthCheck() *schema.Resource {
 				Optional:         true,
 				Default:          "/",
 				DiffSuppressFunc: lbHealthCheckDiffSuppressFunc,
+				ValidateFunc:     validation.StringIsNotEmpty,
 			},
 			"is_default_host_name": {
 				Type:     schema.TypeBool,

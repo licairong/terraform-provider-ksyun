@@ -119,15 +119,27 @@ func lbListenerDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool
 	if d.Get("listener_protocol") != "HTTP" && k == "redirect_listener_id" {
 		return true
 	}
-	if d.Get("listener_protocol") != "HTTPS" && d.Get("listener_protocol") != "HTTP" && k == "http_protocol" {
+	if d.Get("listener_protocol") != "HTTPS" && d.Get("listener_protocol") != "HTTP" &&
+		(k == "http_protocol" ||
+			k == "health_check.0.host_name" ||
+			k == "health_check.0.url_path" ||
+			k == "health_check.0.is_default_host_name" ||
+			k == "session.0.cookie_type" ||
+			k == "session.0.cookie_name") {
 		return true
 	}
-
+	if k == "session.0.cookie_name" && d.Get("session.0.cookie_type") != "RewriteCookie" {
+		return true
+	}
+	if k == "health_check.0.host_name" && d.Get("health_check.0.is_default_host_name").(bool) {
+		return true
+	}
 	return false
 }
 
 func lbHealthCheckDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
-	if d.Get("listener_protocol") != "" && d.Get("listener_protocol") != "HTTP" && d.Get("listener_protocol") != "HTTPS" && (k == "url_path" || k == "host_name" || k == "is_default_host_name") {
+	if d.Get("listener_protocol") != "" && d.Get("listener_protocol") != "HTTP" && d.Get("listener_protocol") != "HTTPS" &&
+		(k == "url_path" || k == "host_name" || k == "is_default_host_name") {
 		return true
 	}
 	if d.Get("host_name") != "" && k == "is_default_host_name" {
@@ -147,6 +159,30 @@ func lbRuleDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
 		return true
 	}
 	if k == "health_check.0.host_name" && d.Get("health_check.0.is_default_host_name").(bool) {
+		return true
+	}
+	return false
+}
+
+func hostHeaderDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	if d.Get("listener_protocol") != "" && d.Get("listener_protocol") != "HTTPS" && k == "certificate_id" {
+		return true
+	}
+	return false
+}
+
+func lbRealServerDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	if d.Get("real_server_type") != "host" && k == "instance_id" {
+		return true
+	}
+	if d.Get("listener_method") != "" && d.Get("listener_method") != "MasterSlave" && k == "master_slave_type" {
+		return true
+	}
+	return false
+}
+
+func lbBackendServerDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	if d.Get("backend_server_group_type") != "Mirror" && strings.HasPrefix(k, "health_check.") {
 		return true
 	}
 	return false

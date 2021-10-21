@@ -1,7 +1,6 @@
 package ksyun
 
 import (
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
@@ -64,46 +63,7 @@ func dataSourceKsyunListenerHostHeaders() *schema.Resource {
 	}
 }
 
-func dataSourceKsyunListenerHostHeadersRead(d *schema.ResourceData, m interface{}) error {
-	conn := m.(*KsyunClient).slbconn
-	req := make(map[string]interface{})
-	var ListenerHostHeaders []string
-	if ids, ok := d.GetOk("ids"); ok {
-		ListenerHostHeaders = SchemaSetToStringSlice(ids)
-	}
-	for k, v := range ListenerHostHeaders {
-		if v == "" {
-			continue
-		}
-		req[fmt.Sprintf("HostHeaderId.%d", k+1)] = v
-	}
-	filters := []string{"listener_id"}
-	req = *SchemaSetsToFilterMap(d, filters, &req)
-
-	var allListenerHostHeaders []interface{}
-
-	resp, err := conn.DescribeHostHeaders(&req)
-	if err != nil {
-		return fmt.Errorf("error on reading host header list req (%v):%v", req, err)
-	}
-	itemSet, ok := (*resp)["HostHeaderSet"]
-	if !ok {
-		return fmt.Errorf("error on reading HostHeader set")
-
-	}
-	items, ok := itemSet.([]interface{})
-	if !ok {
-		return nil
-	}
-	if items == nil || len(items) < 1 {
-		return nil
-	}
-	allListenerHostHeaders = append(allListenerHostHeaders, items...)
-	//	excludes:=[]string{"HealthCheck","RealServer","Session"}
-	datas := GetSubSliceDByRep(allListenerHostHeaders, hostHeaderKeys)
-	err = dataSourceKscSave(d, "host_headers", ListenerHostHeaders, datas)
-	if err != nil {
-		return fmt.Errorf("error on save HostHeader list, %s", err)
-	}
-	return nil
+func dataSourceKsyunListenerHostHeadersRead(d *schema.ResourceData, meta interface{}) error {
+	slbService := SlbService{meta.(*KsyunClient)}
+	return slbService.ReadAndSetHostHeaders(d, dataSourceKsyunListenerHostHeaders())
 }

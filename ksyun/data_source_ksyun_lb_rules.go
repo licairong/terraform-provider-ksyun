@@ -1,7 +1,6 @@
 package ksyun
 
 import (
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
@@ -144,49 +143,7 @@ func dataSourceKsyunSlbRules() *schema.Resource {
 	}
 }
 
-func dataSourceKsyunSlbRulesRead(d *schema.ResourceData, m interface{}) error {
-	conn := m.(*KsyunClient).slbconn
-	req := make(map[string]interface{})
-	var slbRules []string
-	if ids, ok := d.GetOk("ids"); ok {
-		slbRules = SchemaSetToStringSlice(ids)
-	}
-	for k, v := range slbRules {
-		if v == "" {
-			continue
-		}
-		req[fmt.Sprintf("RuleId.%d", k+1)] = v
-	}
-	filters := []string{"host_header_id"}
-	req = *SchemaSetsToFilterMap(d, filters, &req)
-
-	var allSlbRules []interface{}
-
-	resp, err := conn.DescribeRules(&req)
-	if err != nil {
-		return fmt.Errorf("error on reading slb rule list req (%v):%v", req, err)
-	}
-	itemSet, ok := (*resp)["RuleSet"]
-	if !ok {
-		return fmt.Errorf("error on reading slb rule set")
-
-	}
-	items, ok := itemSet.([]interface{})
-	if !ok {
-		return nil
-	}
-	if items == nil || len(items) < 1 {
-		return nil
-	}
-	allSlbRules = append(allSlbRules, items...)
-	//	excludes:=[]string{"HealthCheck","RealServer","Session"}
-	slbRuleDataKeys := slbRuleKeys
-	slbRuleDataKeys["RuleId"] = true
-	datas := GetSubSliceDByRep(allSlbRules, slbRuleDataKeys)
-	dealListenrData(datas)
-	err = dataSourceKscSave(d, "lb_rules", slbRules, datas)
-	if err != nil {
-		return fmt.Errorf("error on save lb rule list, %s", err)
-	}
-	return nil
+func dataSourceKsyunSlbRulesRead(d *schema.ResourceData, meta interface{}) error {
+	slbService := SlbService{meta.(*KsyunClient)}
+	return slbService.ReadAndSetLbRules(d, dataSourceKsyunSlbRules())
 }
