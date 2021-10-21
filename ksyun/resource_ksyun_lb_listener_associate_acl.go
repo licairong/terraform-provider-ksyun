@@ -2,115 +2,55 @@ package ksyun
 
 import (
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/terraform-providers/terraform-provider-ksyun/logger"
-	"strings"
-	"time"
 )
 
-func resourceKsyunListenerLBAcl() *schema.Resource {
+func resourceKsyunListenerAssociateAcl() *schema.Resource {
 	return &schema.Resource{
-		Create: resourceKsyunListenerLBAclCreate,
-		Read:   resourceKsyunListenerLBAclRead,
-		Delete: resourceKsyunListenerLBAclDelete,
+		Create: resourceKsyunListenerAssociateAclCreate,
+		Read:   resourceKsyunListenerAssociateAclRead,
+		Delete: resourceKsyunListenerAssociateAclDelete,
 		Importer: &schema.ResourceImporter{
-			State: schema.ImportStatePassthrough,
+			State: importLoadBalancerAclAssociate,
 		},
 
 		Schema: map[string]*schema.Schema{
-			"load_balancer_acl_id": {
-				Type:     schema.TypeString,
-				Required: true,
-				ForceNew: true,
-			},
 			"listener_id": {
 				Type:     schema.TypeString,
 				Required: true,
 				ForceNew: true,
 			},
+			"load_balancer_acl_id": {
+				Type:     schema.TypeString,
+				Required: true,
+				ForceNew: true,
+			},
 		},
 	}
 }
-func resourceKsyunListenerLBAclCreate(d *schema.ResourceData, m interface{}) error {
-	slbconn := m.(*KsyunClient).slbconn
-	req := make(map[string]interface{})
-	creates := []string{
-		"load_balancer_acl_id",
-		"listener_id",
-	}
-	for _, v := range creates {
-		if v1, ok := d.GetOk(v); ok {
-			vv := Downline2Hump(v)
-			req[vv] = fmt.Sprintf("%v", v1)
-		}
-	}
-
-	action := "AssociateLoadBalancerAcl"
-	logger.Debug(logger.ReqFormat, action, req)
-	resp, err := slbconn.AssociateLoadBalancerAcl(&req)
+func resourceKsyunListenerAssociateAclCreate(d *schema.ResourceData, meta interface{}) (err error) {
+	slbService := SlbService{meta.(*KsyunClient)}
+	err = slbService.CreateLoadBalancerAclAssociate(d, resourceKsyunListenerAssociateAcl())
 	if err != nil {
-		return fmt.Errorf("Error CreateListenerLBAcls : %s", err)
+		return fmt.Errorf("error on creating listener acl associate %q, %s", d.Id(), err)
 	}
-	logger.Debug(logger.RespFormat, action, req, *resp)
-	status, ok := (*resp)["Return"]
-	if !ok {
-		return fmt.Errorf("Error CreateListenerLBAcls")
-	}
-	statu, ok := status.(bool)
-	if !ok {
-		return fmt.Errorf("Error CreateListenerLBAcls ")
-	}
-	if !statu {
-		return fmt.Errorf("Error CreateListenerLBAcls : fail")
-	}
-	id := fmt.Sprintf("%s:%s", d.Get("listener_id"), d.Get("load_balancer_acl_id"))
-	d.SetId(id)
-	return resourceKsyunListenerLBAclRead(d, m)
+	return resourceKsyunListenerAssociateAclRead(d, meta)
 }
 
-func resourceKsyunListenerLBAclRead(d *schema.ResourceData, m interface{}) error {
-	slbconn := m.(*KsyunClient).slbconn
-	req := make(map[string]interface{})
-	p := strings.Split(d.Id(), ":")
-	req["ListenerId.1"] = p[0]
-	action := "DescribeListeners"
-	logger.Debug(logger.ReqFormat, action, req)
-	resp, err := slbconn.DescribeListeners(&req)
+func resourceKsyunListenerAssociateAclRead(d *schema.ResourceData, meta interface{}) (err error) {
+	slbService := SlbService{meta.(*KsyunClient)}
+	err = slbService.ReadAndSetLoadBalancerAclAssociate(d, resourceKsyunListenerAssociateAcl())
 	if err != nil {
-		return fmt.Errorf("Error DescribeListeners : %s", err)
+		return fmt.Errorf("error on reading  listener acl associate %q, %s", d.Id(), err)
 	}
-	logger.Debug(logger.RespFormat, action, req, *resp)
-	itemset := (*resp)["ListenerSet"]
-	items, ok := itemset.([]interface{})
-	if !ok || len(items) == 0 {
-		d.SetId("")
-		return nil
-	}
-	associatekeys := map[string]bool{
-		"LoadBalancerAclId": true,
-		"ListenerId":        true,
-	}
-	SetDByResp(d, items[0], associatekeys, map[string]bool{})
-	return nil
+	return err
 }
 
-func resourceKsyunListenerLBAclDelete(d *schema.ResourceData, m interface{}) error {
-	slbconn := m.(*KsyunClient).slbconn
-	p := strings.Split(d.Id(), ":")
-	req := make(map[string]interface{})
-	req["ListenerId"] = p[0]
-	return resource.Retry(25*time.Minute, func() *resource.RetryError {
-		action := "DisassociateLoadBalancerAcl"
-		logger.Debug(logger.ReqFormat, action, req)
-		resp, err1 := slbconn.DisassociateLoadBalancerAcl(&req)
-		logger.Debug(logger.AllFormat, action, req, *resp, err1)
-		if err1 == nil || (err1 != nil && notFoundError(err1)) {
-			return nil
-		}
-		if err1 != nil && inUseError(err1) {
-			return resource.RetryableError(err1)
-		}
-		return resource.NonRetryableError(fmt.Errorf("DisassociateLoadBalancerAcl error:%v", err1))
-	})
+func resourceKsyunListenerAssociateAclDelete(d *schema.ResourceData, meta interface{}) (err error) {
+	slbService := SlbService{meta.(*KsyunClient)}
+	err = slbService.RemoveLoadBalancerAclAssociate(d)
+	if err != nil {
+		return fmt.Errorf("error on deleting listener acl associate %q, %s", d.Id(), err)
+	}
+	return err
 }

@@ -137,3 +137,49 @@ func generateEntryField(protocol string) (fields []string) {
 	}
 	return fields
 }
+
+func loadBalancerAclEntryHash(v interface{}) int {
+	if v == nil {
+		return hashcode.String("")
+	}
+	m := v.(map[string]interface{})
+	buf := loadBalancerAclEntryHashBase(m)
+	buf.WriteString(fmt.Sprintf("%d-", m["rule_number"].(int)))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(m["rule_action"].(string))))
+	return hashcode.String(buf.String())
+}
+
+func loadBalancerAclEntrySimpleHash(v interface{}) int {
+	if v == nil {
+		return hashcode.String("")
+	}
+	m := v.(map[string]interface{})
+	buf := loadBalancerAclEntryHashBase(m)
+	return hashcode.String(buf.String())
+}
+
+func loadBalancerAclEntryNumberHash(v interface{}) int {
+	if v == nil {
+		return hashcode.String("")
+	}
+	m := v.(map[string]interface{})
+	var buf bytes.Buffer
+	buf.WriteString(fmt.Sprintf("%d-", m["rule_number"].(int)))
+	return hashcode.String(buf.String())
+}
+
+func loadBalancerAclEntryCidrHash(v interface{}) int {
+	if v == nil {
+		return hashcode.String("")
+	}
+	m := v.(map[string]interface{})
+	var buf bytes.Buffer
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(m["cidr_block"].(string))))
+	return hashcode.String(buf.String())
+}
+
+func loadBalancerAclEntryHashBase(m map[string]interface{}) (buf bytes.Buffer) {
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(m["cidr_block"].(string))))
+	buf.WriteString(fmt.Sprintf("%s-", strings.ToLower(m["protocol"].(string))))
+	return buf
+}

@@ -871,9 +871,6 @@ func (s *KecService) startKecInstance(d *schema.ResourceData) (callback ApiCall,
 }
 
 func (s *KecService) removeKecInstance(d *schema.ResourceData, meta interface{}) (err error) {
-	var (
-		resp *map[string]interface{}
-	)
 	conn := meta.(*KsyunClient).kecconn
 	req := make(map[string]interface{})
 	req["InstanceId.1"] = d.Id()
@@ -881,7 +878,7 @@ func (s *KecService) removeKecInstance(d *schema.ResourceData, meta interface{})
 	return resource.Retry(15*time.Minute, func() *resource.RetryError {
 		action := "TerminateInstances"
 		logger.Debug(logger.ReqFormat, action, req)
-		resp, err = conn.TerminateInstances(&req)
+		_, err = conn.TerminateInstances(&req)
 		if err == nil {
 			return nil
 		}

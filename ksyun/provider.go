@@ -111,7 +111,7 @@ func Provider() terraform.ResourceProvider {
 			"ksyun_lb_listener_server":               resourceKsyunInstancesWithListener(),
 			"ksyun_lb_acl":                           resourceKsyunLoadBalancerAcl(),
 			"ksyun_lb_acl_entry":                     resourceKsyunLoadBalancerAclEntry(),
-			"ksyun_lb_listener_associate_acl":        resourceKsyunListenerLBAcl(),
+			"ksyun_lb_listener_associate_acl":        resourceKsyunListenerAssociateAcl(),
 			"ksyun_vpc":                              resourceKsyunVpc(),
 			"ksyun_subnet":                           resourceKsyunSubnet(),
 			"ksyun_security_group":                   resourceKsyunSecurityGroup(),

@@ -1,10 +1,8 @@
 package ksyun
 
 import (
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
-	"regexp"
 )
 
 func dataSourceKsyunLbs() *schema.Resource {
@@ -22,7 +20,7 @@ func dataSourceKsyunLbs() *schema.Resource {
 			"name_regex": {
 				Type:         schema.TypeString,
 				Optional:     true,
-				ValidateFunc: validation.ValidateRegexp,
+				ValidateFunc: validation.StringIsValidRegExp,
 			},
 
 			"vpc_id": {
@@ -33,9 +31,20 @@ func dataSourceKsyunLbs() *schema.Resource {
 				},
 			},
 			"state": {
-				Type:         schema.TypeString,
-				Optional:     true,
-				ValidateFunc: validation.ValidateRegexp,
+				Type:     schema.TypeString,
+				Optional: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"associate",
+					"disassociate",
+				}, false),
+			},
+
+			"project_id": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
 			},
 
 			"output_file": {
@@ -89,6 +98,30 @@ func dataSourceKsyunLbs() *schema.Resource {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
+						"project_id": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"listeners_count": {
+							Type:     schema.TypeInt,
+							Computed: true,
+						},
+						"ip_version": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"is_waf": {
+							Type:     schema.TypeBool,
+							Computed: true,
+						},
+						"lb_type": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"lb_status": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
 					},
 				},
 			},
@@ -96,59 +129,7 @@ func dataSourceKsyunLbs() *schema.Resource {
 	}
 }
 
-func dataSourceKsyunLbsRead(d *schema.ResourceData, m interface{}) error {
-	conn := m.(*KsyunClient).slbconn
-	req := make(map[string]interface{})
-	var slbs []string
-	if ids, ok := d.GetOk("ids"); ok {
-		slbs = SchemaSetToStringSlice(ids)
-	}
-	for k, v := range slbs {
-		if v == "" {
-			continue
-		}
-		req[fmt.Sprintf("LoadBalancerId.%d", k+1)] = v
-	}
-
-	if ids, ok := d.GetOk("state"); ok {
-		req["State"] = ids
-	}
-	filters := []string{"vpc_id"}
-	req = *SchemaSetsToFilterMap(d, filters, &req)
-
-	var allSlbs []interface{}
-
-	resp, err := conn.DescribeLoadBalancers(&req)
-	if err != nil {
-		return fmt.Errorf("error on reading Slb list, %s", req)
-	}
-	itemSet, ok := (*resp)["LoadBalancerDescriptions"]
-	if !ok {
-		return fmt.Errorf("error on reading Slb set")
-
-	}
-	items, ok := itemSet.([]interface{})
-	if !ok {
-		return nil
-	}
-	if items == nil || len(items) < 1 {
-		return nil
-	}
-	allSlbs = append(allSlbs, items...)
-	datas := GetSubSliceDByRep(allSlbs, slbKeys)
-	if nameRegex, ok := d.GetOk("name_regex"); ok {
-		var dataFilter []map[string]interface{}
-		r := regexp.MustCompile(nameRegex.(string))
-		for _, v := range datas {
-			if r == nil || r.MatchString(v["load_balancer_name"].(string)) {
-				dataFilter = append(dataFilter, v)
-			}
-		}
-		datas = dataFilter
-	}
-	err = dataSourceKscSave(d, "lbs", slbs, datas)
-	if err != nil {
-		return fmt.Errorf("error on save Slb list, %s", err)
-	}
-	return nil
+func dataSourceKsyunLbsRead(d *schema.ResourceData, meta interface{}) error {
+	slbService := SlbService{meta.(*KsyunClient)}
+	return slbService.ReadAndSetLoadBalancers(d, dataSourceKsyunLbs())
 }

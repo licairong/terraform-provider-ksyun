@@ -1,7 +1,6 @@
 package ksyun
 
 import (
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
@@ -89,45 +88,7 @@ func dataSourceKsyunRegisterBackendServers() *schema.Resource {
 	}
 }
 
-func dataSourceKsyunRegisterBackendServersRead(d *schema.ResourceData, m interface{}) error {
-	conn := m.(*KsyunClient).slbconn
-	req := make(map[string]interface{})
-	var backendServers []string
-	if ids, ok := d.GetOk("id"); ok {
-		backendServers = SchemaSetToStringSlice(ids)
-	}
-	for k, v := range backendServers {
-		if v == "" {
-			continue
-		}
-		req[fmt.Sprintf("RegisterId.%d", k+1)] = v
-	}
-	var allRegisterBackendServers []interface{}
-	resp, err := conn.DescribeBackendServers(&req)
-	if err != nil {
-		return fmt.Errorf("error on reading register_backend_servers req (%v):%v", req, err)
-	}
-	filters := []string{
-		"backend_server_group_id",
-	}
-	req = *SchemaSetsToFilterMap(d, filters, &req)
-
-	itemSet, ok := (*resp)["BackendServerSet"]
-	if !ok {
-		return fmt.Errorf("error on reading register_backend_servers")
-	}
-	items, ok := itemSet.([]interface{})
-	if !ok {
-		return nil
-	}
-	if items == nil || len(items) < 1 {
-		return nil
-	}
-	allRegisterBackendServers = append(allRegisterBackendServers, items...)
-	datas := GetSubSliceDByRep(allRegisterBackendServers, registerBackendServerKeys)
-	err = dataSourceKscSave(d, "register_backend_servers", backendServers, datas)
-	if err != nil {
-		return fmt.Errorf("error on save register_backend_servers list, %s", err)
-	}
-	return nil
+func dataSourceKsyunRegisterBackendServersRead(d *schema.ResourceData, meta interface{}) error {
+	slbService := SlbService{meta.(*KsyunClient)}
+	return slbService.ReadAndSetBackendServers(d, dataSourceKsyunRegisterBackendServers())
 }

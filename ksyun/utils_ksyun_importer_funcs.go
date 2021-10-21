@@ -72,6 +72,50 @@ func importNetworkAclEntry(d *schema.ResourceData, meta interface{}) ([]*schema.
 	return []*schema.ResourceData{d}, nil
 }
 
+func importLoadBalancerAclEntry(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	var err error
+	items := strings.Split(d.Id(), ":")
+	if len(items) < 3 {
+		return []*schema.ResourceData{d}, fmt.Errorf("import id must split with ':'")
+	}
+
+	err = d.Set("load_balancer_acl_id", items[0])
+	if err != nil {
+		return []*schema.ResourceData{d}, err
+	}
+	num, err := strconv.Atoi(items[1])
+	if err != nil {
+		return []*schema.ResourceData{d}, err
+	}
+	err = d.Set("rule_number", num)
+	if err != nil {
+		return []*schema.ResourceData{d}, err
+	}
+	err = d.Set("cidr_block", items[2])
+	if err != nil {
+		return []*schema.ResourceData{d}, err
+	}
+	return []*schema.ResourceData{d}, nil
+}
+
+func importLoadBalancerAclAssociate(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	var err error
+	items := strings.Split(d.Id(), ":")
+	if len(items) < 2 {
+		return []*schema.ResourceData{d}, fmt.Errorf("import id must split with ':'")
+	}
+
+	err = d.Set("listener_id", items[0])
+	if err != nil {
+		return []*schema.ResourceData{d}, err
+	}
+	err = d.Set("load_balancer_acl_id", items[1])
+	if err != nil {
+		return []*schema.ResourceData{d}, err
+	}
+	return []*schema.ResourceData{d}, nil
+}
+
 func importNetworkAclAssociate(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
 	var err error
 	items := strings.Split(d.Id(), ":")
@@ -210,5 +254,3 @@ func importBandWidthShareAssociate(d *schema.ResourceData, meta interface{}) ([]
 
 	return []*schema.ResourceData{d}, nil
 }
-
-

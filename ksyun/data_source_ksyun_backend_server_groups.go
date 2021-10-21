@@ -1,7 +1,6 @@
 package ksyun
 
 import (
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
@@ -10,6 +9,22 @@ func dataSourceKsyunBackendServerGroups() *schema.Resource {
 		Read: dataSourceKsyunBackendServerGroupsRead,
 		Schema: map[string]*schema.Schema{
 			"ids": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Set: schema.HashString,
+			},
+			"vpc_id": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Set: schema.HashString,
+			},
+			"backend_server_group_type": {
 				Type:     schema.TypeSet,
 				Optional: true,
 				Elem: &schema.Schema{
@@ -106,42 +121,7 @@ func dataSourceKsyunBackendServerGroups() *schema.Resource {
 	}
 }
 
-func dataSourceKsyunBackendServerGroupsRead(d *schema.ResourceData, m interface{}) error {
-	conn := m.(*KsyunClient).slbconn
-	req := make(map[string]interface{})
-	var backendServerGroups []string
-	if ids, ok := d.GetOk("ids"); ok {
-		backendServerGroups = SchemaSetToStringSlice(ids)
-	}
-	for k, v := range backendServerGroups {
-		if v == "" {
-			continue
-		}
-		req[fmt.Sprintf("BackendServerGroupId.%d", k+1)] = v
-	}
-	var allBackendServerGroups []interface{}
-	resp, err := conn.DescribeBackendServerGroups(&req)
-	if err != nil {
-		return fmt.Errorf("error on reading backend server group list req (%v):%v", req, err)
-	}
-	itemSet, ok := (*resp)["BackendServerGroupSet"]
-	if !ok {
-		return fmt.Errorf("error on reading backend server group set")
-
-	}
-	items, ok := itemSet.([]interface{})
-	if !ok {
-		return nil
-	}
-	if items == nil || len(items) < 1 {
-		return nil
-	}
-	allBackendServerGroups = append(allBackendServerGroups, items...)
-	datas := GetSubSliceDByRep(allBackendServerGroups, backendServerGroupKeys)
-	dealListenrData(datas)
-	err = dataSourceKscSave(d, "backend_server_groups", backendServerGroups, datas)
-	if err != nil {
-		return fmt.Errorf("error on save backend_server_group list, %s", err)
-	}
-	return nil
+func dataSourceKsyunBackendServerGroupsRead(d *schema.ResourceData, meta interface{}) error {
+	slbService := SlbService{meta.(*KsyunClient)}
+	return slbService.ReadAndSetBackendServerGroups(d, dataSourceKsyunBackendServerGroups())
 }
