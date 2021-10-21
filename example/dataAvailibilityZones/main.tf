@@ -6,6 +6,5 @@ provider "ksyun" {
 # Get  availability zones
 data "ksyun_availability_zones" "default" {
   output_file=""
-  ids=[]
 }
 

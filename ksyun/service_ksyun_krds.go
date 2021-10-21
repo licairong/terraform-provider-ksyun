@@ -800,22 +800,19 @@ func removeKrdsInstance(d *schema.ResourceData, meta interface{}) (err error) {
 }
 
 func removeKrdsDbInstance(d *schema.ResourceData, meta interface{}) (err error) {
-	var (
-		resp *map[string]interface{}
-	)
 	conn := meta.(*KsyunClient).krdsconn
 	req := make(map[string]interface{})
 	req["DBInstanceIdentifier"] = d.Id()
 	return resource.Retry(15*time.Minute, func() *resource.RetryError {
 		action := "DeleteDBInstance"
 		logger.Debug(logger.ReqFormat, action, req)
-		resp, err = conn.DeleteDBInstance(&req)
+		_, err = conn.DeleteDBInstance(&req)
 		if err == nil {
 			return nil
 		}
 		action = "DescribeInstances"
 		logger.Debug(logger.ReqFormat, action, req)
-		resp, err = conn.DescribeDBInstances(&req)
+		_, err = conn.DescribeDBInstances(&req)
 		if err != nil {
 			if notFoundError(err) {
 				return nil

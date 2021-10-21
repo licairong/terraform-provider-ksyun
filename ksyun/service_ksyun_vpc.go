@@ -1452,15 +1452,26 @@ func (s *VpcService) CreateNetworkAclCall(d *schema.ResourceData, r *schema.Reso
 
 func (s *VpcService) CreateNetworkAclEntryWithAclCall(d *schema.ResourceData, r *schema.Resource) (callbacks []ApiCall, err error) {
 	if entries, ok := d.GetOk("network_acl_entries"); ok {
-		for index, entry := range entries.(*schema.Set).List() {
+		for _, entry := range entries.(*schema.Set).List() {
 			var (
 				req      map[string]interface{}
 				callback ApiCall
 			)
+			key := networkAclEntryHash(entry)
 			transform := make(map[string]SdkReqTransform)
 			for k, _ := range entry.(map[string]interface{}) {
-				key := "network_acl_entries." + strconv.Itoa(index) + "." + k
-				transform[key] = SdkReqTransform{mapping: Downline2Hump(k)}
+				key := "network_acl_entries." + strconv.Itoa(key) + "." + k
+				if k == "icmp_type" || k == "icmp_code" {
+					transform[key] = SdkReqTransform{
+						mapping: Downline2Hump(k),
+						ValueFunc: func(data *schema.ResourceData) (interface{}, bool) {
+							return d.Get(key), true
+						},
+					}
+				} else {
+					transform[key] = SdkReqTransform{mapping: Downline2Hump(k)}
+				}
+
 			}
 			req, err = SdkRequestAutoMapping(d, r, false, transform, nil)
 			if err != nil {
@@ -2097,15 +2108,26 @@ func (s *VpcService) CreateSecurityGroupCall(d *schema.ResourceData, r *schema.R
 
 func (s *VpcService) CreateSecurityGroupEntryWithSgCall(d *schema.ResourceData, r *schema.Resource) (callbacks []ApiCall, err error) {
 	if entries, ok := d.GetOk("security_group_entries"); ok {
-		for index, entry := range entries.(*schema.Set).List() {
+		for _, entry := range entries.(*schema.Set).List() {
 			var (
 				req      map[string]interface{}
 				callback ApiCall
 			)
+			index := securityGroupEntryHash(entry)
 			transform := make(map[string]SdkReqTransform)
 			for k, _ := range entry.(map[string]interface{}) {
 				key := "security_group_entries." + strconv.Itoa(index) + "." + k
-				transform[key] = SdkReqTransform{mapping: Downline2Hump(k)}
+				if k == "icmp_type" || k == "icmp_code" {
+					transform[key] = SdkReqTransform{
+						mapping: Downline2Hump(k),
+						ValueFunc: func(data *schema.ResourceData) (interface{}, bool) {
+							return d.Get(key), true
+						},
+					}
+				} else {
+					transform[key] = SdkReqTransform{mapping: Downline2Hump(k)}
+				}
+
 			}
 			req, err = SdkRequestAutoMapping(d, r, false, transform, nil)
 			if err != nil {

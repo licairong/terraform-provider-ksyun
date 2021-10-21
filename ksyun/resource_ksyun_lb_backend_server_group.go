@@ -2,14 +2,27 @@ package ksyun
 
 import (
 	"fmt"
-	"github.com/hashicorp/terraform-plugin-sdk/helper/resource"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/terraform-providers/terraform-provider-ksyun/logger"
-	"strings"
-	"time"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func resourceKsyunBackendServerGroup() *schema.Resource {
+	entry := resourceKsyunHealthCheck().Schema
+	for k, v := range entry {
+		if k == "listener_id" || k == "listener_protocol" || k == "is_default_host_name" || k == "host_name" {
+			delete(entry, k)
+		} else {
+			v.ForceNew = false
+			v.DiffSuppressFunc = nil
+		}
+	}
+	entry["host_name"] = &schema.Schema{
+		Type:         schema.TypeString,
+		Optional:     true,
+		Default:      "default",
+		ValidateFunc: validation.StringIsNotEmpty,
+	}
+
 	return &schema.Resource{
 		Create: resourceKsyunBackendServerGroupCreate,
 		Read:   resourceKsyunBackendServerGroupRead,
@@ -22,175 +35,82 @@ func resourceKsyunBackendServerGroup() *schema.Resource {
 		Schema: map[string]*schema.Schema{
 			"backend_server_group_name": {
 				Type:     schema.TypeString,
+				Optional: true,
+				Default:  "backend_server_group",
+			},
+			"vpc_id": {
+				Type:     schema.TypeString,
 				Required: true,
+				ForceNew: true,
+			},
+			"backend_server_group_type": {
+				Type:     schema.TypeString,
+				Optional: true,
+				ValidateFunc: validation.StringInSlice([]string{
+					"Server",
+					"Mirror",
+				}, false),
+				Default:  "Server",
+				ForceNew: true,
+			},
+			"health_check": {
+				Type:     schema.TypeList,
+				MaxItems: 1,
+				Elem: &schema.Resource{
+					Schema: entry,
+				},
+				Optional:         true,
+				Computed:         true,
+				DiffSuppressFunc: lbBackendServerDiffSuppressFunc,
+			},
+
+			"create_time": {
+				Type:     schema.TypeString,
+				Computed: true,
 			},
 			"backend_server_group_id": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
-			"vpc_id": {
-				Type:     schema.TypeString,
-				Required: true,
-			},
 			"backend_server_number": {
 				Type:     schema.TypeInt,
-				Computed: true,
-			},
-			"backend_server_group_type": {
-				Type:     schema.TypeString,
-				Optional: true,
-				Computed: true,
-			},
-			"create_time": {
-				Type:     schema.TypeString,
 				Computed: true,
 			},
 		},
 	}
 }
-func resourceKsyunBackendServerGroupCreate(d *schema.ResourceData, m interface{}) error {
-	slbconn := m.(*KsyunClient).slbconn
-	req := make(map[string]interface{})
-	creates := []string{
-		"vpc_id",
-		"backend_server_group_name",
-		"backend_server_group_type",
-	}
-	for _, v := range creates {
-		if v1, ok := d.GetOk(v); ok {
-			vv := Downline2Hump(v)
-			req[vv] = fmt.Sprintf("%v", v1)
-		}
-	}
-	action := "CreateBackendServerGroup"
-	logger.Debug(logger.ReqFormat, action, req)
-	resp, err := slbconn.CreateBackendServerGroup(&req)
+func resourceKsyunBackendServerGroupCreate(d *schema.ResourceData, meta interface{}) (err error) {
+	slbService := SlbService{meta.(*KsyunClient)}
+	err = slbService.CreateBackendServerGroup(d, resourceKsyunBackendServerGroup())
 	if err != nil {
-		return fmt.Errorf("Error CreateBackendServerGroup : %s", err)
+		return fmt.Errorf("error on creating backend server group %q, %s", d.Id(), err)
 	}
-	logger.Debug(logger.RespFormat, action, req, *resp)
-	item, ok := (*resp)["BackendServerGroup"]
-	if !ok {
-		return fmt.Errorf("Error CreateBackendServerGroup : no BackendServerGroup found")
-	}
-	data, ok := item.(map[string]interface{})
-	if !ok {
-		return fmt.Errorf("Error CreateBackendServerGroup : no BackendServerGroup found")
-	}
-	id, ok := data["BackendServerGroupId"]
-	if !ok {
-		return fmt.Errorf("Error CreateBackendServerGroup : no BackendServerGroupId found")
-	}
-	idres, ok := id.(string)
-	if !ok {
-		return fmt.Errorf("Error CreateBackendServerGroup : no BackendServerGroupId found")
-	}
-	d.SetId(idres)
-	return resourceKsyunBackendServerGroupRead(d, m)
+	return resourceKsyunBackendServerGroupRead(d, meta)
 }
 
-func resourceKsyunBackendServerGroupRead(d *schema.ResourceData, m interface{}) error {
-	slbconn := m.(*KsyunClient).slbconn
-	req := make(map[string]interface{})
-	req["BackendServerGroupId.1"] = d.Id()
-	action := "DescribeBackendServerGroups"
-	logger.Debug(logger.ReqFormat, action, req)
-	resp, err := slbconn.DescribeBackendServerGroups(&req)
+func resourceKsyunBackendServerGroupRead(d *schema.ResourceData, meta interface{}) (err error) {
+	slbService := SlbService{meta.(*KsyunClient)}
+	err = slbService.ReadAndSetBackendServerGroup(d, resourceKsyunBackendServerGroup())
 	if err != nil {
-		return fmt.Errorf("Error DescribeBackendServerGroups : %s", err)
+		return fmt.Errorf("error on reading backend server group %q, %s", d.Id(), err)
 	}
-	logger.Debug(logger.RespFormat, action, req, *resp)
-	itemset := (*resp)["BackendServerGroupSet"]
-	items, ok := itemset.([]interface{})
-	if !ok || len(items) == 0 {
-		d.SetId("")
-		return nil
-	}
-	SetDByResp(d, items[0], backendServerGroupKeys, map[string]bool{})
-	return nil
+	return err
 }
 
-func resourceKsyunBackendServerGroupUpdate(d *schema.ResourceData, m interface{}) error {
-	slbconn := m.(*KsyunClient).slbconn
-	req := make(map[string]interface{})
-	req["BackendServerGroupId"] = d.Id()
-	allAttributes := []string{
-		"backend_server_group_name",
-	}
-	// Whether the representative has any modifications
-	attributeUpdate := false
-	var updates []string
-	//Get the property that needs to be modified
-	for _, v := range allAttributes {
-		if d.HasChange(v) {
-			attributeUpdate = true
-			updates = append(updates, v)
-		}
-	}
-	if !attributeUpdate {
-		return nil
-	}
-	//Create a modification request
-	for _, v := range allAttributes {
-		if v1, ok := d.GetOk(v); ok {
-			req[Downline2Hump(v)] = fmt.Sprintf("%v", v1)
-		}
-	}
-	// Enable partial attribute modification
-	d.Partial(true)
-	action := "ModifyBackendServerGroup"
-	logger.Debug(logger.ReqFormat, action, req)
-	resp, err := slbconn.ModifyBackendServerGroup(&req)
+func resourceKsyunBackendServerGroupUpdate(d *schema.ResourceData, meta interface{}) (err error) {
+	slbService := SlbService{meta.(*KsyunClient)}
+	err = slbService.ModifyBackendServerGroup(d, resourceKsyunBackendServerGroup())
 	if err != nil {
-		logger.Debug(logger.AllFormat, action, req, *resp, err)
-		if strings.Contains(err.Error(), "400") {
-			time.Sleep(time.Second * 3)
-			resp, err = slbconn.ModifyBackendServerGroup(&req)
-			if err != nil {
-				return fmt.Errorf("update BackendServerGroup (%v)error:%v", req, err)
-			}
-		}
+		return fmt.Errorf("error on updating backend server group %q, %s", d.Id(), err)
 	}
-	logger.Debug(logger.RespFormat, action, req, *resp)
-	for _, v := range updates {
-		d.SetPartial(v)
-	}
-	d.Partial(false)
-	return resourceKsyunBackendServerGroupRead(d, m)
+	return resourceKsyunBackendServerGroupRead(d, meta)
 }
 
-func resourceKsyunBackendServerGroupDelete(d *schema.ResourceData, m interface{}) error {
-	slbconn := m.(*KsyunClient).slbconn
-	req := make(map[string]interface{})
-	req["BackendServerGroupId"] = d.Id()
-	return resource.Retry(25*time.Minute, func() *resource.RetryError {
-		action := "DeleteBackendServerGroup"
-		logger.Debug(logger.ReqFormat, action, req)
-		resp, err1 := slbconn.DeleteBackendServerGroup(&req)
-		logger.Debug(logger.AllFormat, action, req, *resp, err1)
-		if err1 == nil || (err1 != nil && notFoundError(err1)) {
-			return nil
-		}
-		if err1 != nil && inUseError(err1) {
-			return resource.RetryableError(err1)
-		}
-		req := make(map[string]interface{})
-		req["BackendServerGroupId.1"] = d.Id()
-		action = "DescribeBackendServerGroups"
-		logger.Debug(logger.ReqFormat, action, req)
-		resp, err := slbconn.DescribeBackendServerGroups(&req)
-		if err != nil {
-			return resource.NonRetryableError(fmt.Errorf("error on DescribeBackendServerGroups when deleting %q, %s", d.Id(), err))
-		}
-		logger.Debug(logger.RespFormat, action, req, *resp)
-		items, ok := (*resp)["BackendServerGroupSet"]
-		if !ok {
-			return nil
-		}
-		itemsspe, ok := items.([]interface{})
-		if !ok || len(itemsspe) == 0 {
-			return nil
-		}
-		return resource.RetryableError(fmt.Errorf(" the specified BackendServerGroup %q has not been deleted due to unknown error", d.Id()))
-	})
+func resourceKsyunBackendServerGroupDelete(d *schema.ResourceData, meta interface{}) (err error) {
+	slbService := SlbService{meta.(*KsyunClient)}
+	err = slbService.RemoveBackendServerGroup(d)
+	if err != nil {
+		return fmt.Errorf("error on deleting backend server group %q, %s", d.Id(), err)
+	}
+	return err
 }

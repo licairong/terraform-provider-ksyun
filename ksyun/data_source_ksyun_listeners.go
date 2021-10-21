@@ -1,8 +1,8 @@
 package ksyun
 
 import (
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func dataSourceKsyunListeners() *schema.Resource {
@@ -18,6 +18,12 @@ func dataSourceKsyunListeners() *schema.Resource {
 				Set: schema.HashString,
 			},
 
+			"name_regex": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ValidateFunc: validation.StringIsValidRegExp,
+			},
+
 			"output_file": {
 				Type:     schema.TypeString,
 				Optional: true,
@@ -28,6 +34,13 @@ func dataSourceKsyunListeners() *schema.Resource {
 				Computed: true,
 			},
 			"load_balancer_id": {
+				Type:     schema.TypeList,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+			},
+			"certificate_id": {
 				Type:     schema.TypeList,
 				Optional: true,
 				Elem: &schema.Schema{
@@ -90,13 +103,8 @@ func dataSourceKsyunListeners() *schema.Resource {
 							Computed: true,
 						},
 
-						"band_width_out": {
-							Type:     schema.TypeInt,
-							Computed: true,
-						},
-
-						"band_width_in": {
-							Type:     schema.TypeInt,
+						"load_balancer_acl_id": {
+							Type:     schema.TypeString,
 							Computed: true,
 						},
 
@@ -169,7 +177,6 @@ func dataSourceKsyunListeners() *schema.Resource {
 									},
 								},
 							},
-							//			Set: resourceKscListenerSessionHash,
 						},
 						"real_server": {
 							Type: schema.TypeList,
@@ -218,78 +225,7 @@ func dataSourceKsyunListeners() *schema.Resource {
 	}
 }
 
-func dataSourceKsyunListenersRead(d *schema.ResourceData, m interface{}) error {
-	var result []map[string]interface{}
-	conn := m.(*KsyunClient).slbconn
-	req := make(map[string]interface{})
-	var Listeners []string
-	if ids, ok := d.GetOk("ids"); ok {
-		Listeners = SchemaSetToStringSlice(ids)
-	}
-	for k, v := range Listeners {
-		if v == "" {
-			continue
-		}
-		req[fmt.Sprintf("ListenerId.%d", k+1)] = v
-	}
-	filters := []string{"load_balancer_id"}
-	req = *SchemaSetsToFilterMap(d, filters, &req)
-
-	var allListeners []interface{}
-
-	resp, err := conn.DescribeListeners(&req)
-	if err != nil {
-		return fmt.Errorf("error on reading listener list req (%v):%v", req, err)
-	}
-	itemSet, ok := (*resp)["ListenerSet"]
-	if !ok {
-		return fmt.Errorf("error on reading Listener set")
-
-	}
-	items, ok := itemSet.([]interface{})
-	if !ok {
-		return nil
-	}
-	if items == nil || len(items) < 1 {
-		return nil
-	}
-	allListeners = append(allListeners, items...)
-	merageResultDirect(&result, allListeners)
-	err = dataSourceKsyunListenersSave(d, result)
-	if err != nil {
-		return fmt.Errorf("error on save Listener list, %s", err)
-	}
-	return nil
-}
-
-func dataSourceKsyunListenersSave(d *schema.ResourceData, result []map[string]interface{}) error {
-	resource := dataSourceKsyunListeners()
-	targetName := "listeners"
-	_, _, err := SdkSliceMapping(d, result, SdkSliceData{
-		IdField: "ListenerId",
-		IdMappingFunc: func(idField string, item map[string]interface{}) string {
-			return item[idField].(string)
-		},
-		SliceMappingFunc: func(item map[string]interface{}) map[string]interface{} {
-			return SdkResponseAutoMapping(resource, targetName, item, nil, nil)
-		},
-		TargetName: targetName,
-	})
-	return err
-}
-
-func dealListenrData(datas []map[string]interface{}) {
-	for k, v := range datas {
-		for k1, v1 := range v {
-			switch k1 {
-			case "health_check":
-				datas[k]["health_check"] = GetSubSliceDByRep([]interface{}{v1}, healthCheckKeys)
-			case "real_server":
-				vv := v1.([]interface{})
-				datas[k]["real_server"] = GetSubSliceDByRep(vv, serverKeys)
-			case "session":
-				datas[k]["session"] = GetSubSliceDByRep([]interface{}{v1}, sessionKeys)
-			}
-		}
-	}
+func dataSourceKsyunListenersRead(d *schema.ResourceData, meta interface{}) error {
+	slbService := SlbService{meta.(*KsyunClient)}
+	return slbService.ReadAndSetListeners(d, dataSourceKsyunListeners())
 }
