@@ -1,9 +1,8 @@
 package ksyun
 
 import (
-	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/terraform-providers/terraform-provider-ksyun/logger"
+	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
 func dataSourceKsyunInstances() *schema.Resource {
@@ -18,10 +17,14 @@ func dataSourceKsyunInstances() *schema.Resource {
 				},
 				Set: schema.HashString,
 			},
+			"name_regex": {
+				Type:         schema.TypeString,
+				Optional:     true,
+				ValidateFunc: validation.StringIsValidRegExp,
+			},
 			"search": {
 				Type:     schema.TypeString,
 				Optional: true,
-				//ValidateFunc: validation.ValidateRegexp,
 			},
 
 			"project_id": {
@@ -58,6 +61,7 @@ func dataSourceKsyunInstances() *schema.Resource {
 			"network_interface": {
 				Type:     schema.TypeList,
 				Optional: true,
+				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"subnet_id": {
@@ -103,6 +107,7 @@ func dataSourceKsyunInstances() *schema.Resource {
 			"availability_zone": {
 				Type:     schema.TypeList,
 				Optional: true,
+				MaxItems: 1,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
 						"name": {
@@ -381,84 +386,6 @@ func dataSourceKsyunInstances() *schema.Resource {
 }
 
 func dataSourceKsyunInstancesRead(d *schema.ResourceData, meta interface{}) error {
-	var result []map[string]interface{}
-	var all []interface{}
-	var err error
-	r := dataSourceKsyunInstances()
-
-	limit := 100
-	offset := 0
-
-	client := meta.(*KsyunClient)
-	all = []interface{}{}
-	result = []map[string]interface{}{}
-	req := make(map[string]interface{})
-
-	var only map[string]SdkReqTransform
-
-	only = map[string]SdkReqTransform{
-		"ids":               {mapping: "InstanceId", Type: TransformWithN},
-		"project_id":        {Type: TransformWithN},
-		"vpc_id":            {Type: TransformWithFilter},
-		"subnet_id":         {Type: TransformWithFilter},
-		"search":            {mapping: "Search"},
-		"network_interface": {Type: TransformListFilter},
-		"instance_state":    {Type: TransformListFilter},
-		"availability_zone": {mappings: map[string]string{
-			"availability_zone.name": "availability-zone-name",
-		}, Type: TransformListFilter},
-	}
-
-	req, err = SdkRequestAutoMapping(d, r, false, only, nil)
-	if err != nil {
-		return fmt.Errorf("error on reading Instance list, %s", err)
-	}
-
-	for {
-		req["MaxResults"] = limit
-		req["Marker"] = offset
-
-		logger.Debug(logger.ReqFormat, "DescribeInstances", req)
-		resp, err := client.kecconn.DescribeInstances(&req)
-		if err != nil {
-			return fmt.Errorf("error on reading Instance list req(%v):%v", req, err)
-		}
-		l := (*resp)["InstancesSet"].([]interface{})
-		all = append(all, l...)
-		if len(l) < limit {
-			break
-		}
-
-		offset = offset + limit
-	}
-
-	merageResultDirect(&result, all)
-
-	err = dataSourceKsyunInstancesSave(d, result)
-	if err != nil {
-		return fmt.Errorf("error on reading Instance list, %s", err)
-	}
-	return nil
-}
-
-func dataSourceKsyunInstancesSave(d *schema.ResourceData, result []map[string]interface{}) error {
-	resource := dataSourceKsyunInstances()
-	targetName := "instances"
-	_, _, err := SdkSliceMapping(d, result, SdkSliceData{
-		IdField: "InstanceId",
-		IdMappingFunc: func(idField string, item map[string]interface{}) string {
-			return item[idField].(string)
-		},
-		SliceMappingFunc: func(item map[string]interface{}) map[string]interface{} {
-			return SdkResponseAutoMapping(resource, targetName, item, nil, kecInstanceSpecialMapping())
-		},
-		TargetName: targetName,
-	})
-	return err
-}
-
-func kecInstanceSpecialMapping() map[string]SdkResponseMapping {
-	specialMapping := make(map[string]SdkResponseMapping)
-	specialMapping["KeySet"] = SdkResponseMapping{Field: "key_id"}
-	return specialMapping
+	kecService := KecService{meta.(*KsyunClient)}
+	return kecService.ReadAndSetKecInstances(d, dataSourceKsyunInstances())
 }

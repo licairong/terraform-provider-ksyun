@@ -13,89 +13,150 @@ type KecService struct {
 	client *KsyunClient
 }
 
-func (s *KecService) readAndSetKecInstance(d *schema.ResourceData, resource *schema.Resource) (err error) {
-	data, err := s.readKecInstance(d, "")
-	if err != nil {
-		return err
-	}
-	//InstanceConfigure
-	SdkResponseAutoResourceData(d, resource, data["InstanceConfigure"], nil)
-	//InstanceState
-	stateExtra := map[string]SdkResponseMapping{
-		"Name": {
-			Field: "instance_status",
-		},
-	}
-	SdkResponseAutoResourceData(d, resource, data["InstanceState"], stateExtra)
-	//Primary network_interface
-	for _, vif := range data["NetworkInterfaceSet"].([]interface{}) {
-		if vif.(map[string]interface{})["NetworkInterfaceType"] == "primary" {
+func (s *KecService) readAndSetKecInstance(d *schema.ResourceData, r *schema.Resource) (err error) {
+	return resource.Retry(5*time.Minute, func() *resource.RetryError {
+		data, callErr := s.readKecInstance(d, "")
+		if callErr != nil {
+			if !d.IsNewResource() {
+				return resource.NonRetryableError(callErr)
+			}
+			if notFoundError(callErr) {
+				return resource.RetryableError(callErr)
+			} else {
+				return resource.NonRetryableError(fmt.Errorf("error on  reading instane %q, %s", d.Id(), callErr))
+			}
+		} else {
+			//InstanceConfigure
+			SdkResponseAutoResourceData(d, r, data["InstanceConfigure"], nil)
+			//InstanceState
+			stateExtra := map[string]SdkResponseMapping{
+				"Name": {
+					Field: "instance_status",
+				},
+			}
+			SdkResponseAutoResourceData(d, r, data["InstanceState"], stateExtra)
+			//Primary network_interface
+			for _, vif := range data["NetworkInterfaceSet"].([]interface{}) {
+				if vif.(map[string]interface{})["NetworkInterfaceType"] == "primary" {
+					extra := map[string]SdkResponseMapping{
+						"SecurityGroupSet": {
+							Field: "security_group_id",
+							FieldRespFunc: func(i interface{}) interface{} {
+								var result []interface{}
+								for _, v := range i.([]interface{}) {
+									result = append(result, v.(map[string]interface{})["SecurityGroupId"])
+								}
+								return result
+							},
+						},
+					}
+					SdkResponseAutoResourceData(d, r, vif, extra)
+					//read dns info
+					var networkInterface map[string]interface{}
+					networkInterface, err = s.readKecNetworkInterface(d.Get("network_interface_id").(string))
+					if err != nil {
+						return resource.NonRetryableError(err)
+					}
+					for k, _ := range networkInterface {
+						if k == "DNS1" || k == "DNS2" {
+							continue
+						}
+						delete(networkInterface, k)
+					}
+					extra = map[string]SdkResponseMapping{
+						"DNS1": {
+							Field: "dns1",
+						},
+						"DNS2": {
+							Field: "dns2",
+						},
+					}
+					SdkResponseAutoResourceData(d, r, networkInterface, extra)
+					break
+				}
+			}
+
+			//extension_network_interface
 			extra := map[string]SdkResponseMapping{
-				"SecurityGroupSet": {
-					Field: "security_group_id",
+				"NetworkInterfaceSet": {
+					Field: "extension_network_interface",
 					FieldRespFunc: func(i interface{}) interface{} {
 						var result []interface{}
 						for _, v := range i.([]interface{}) {
-							result = append(result, v.(map[string]interface{})["SecurityGroupId"])
+							if v.(map[string]interface{})["NetworkInterfaceType"] != "primary" {
+								result = append(result, v)
+							}
 						}
 						return result
 					},
 				},
-			}
-			SdkResponseAutoResourceData(d, resource, vif, extra)
-			//read dns info
-			networkInterface, err := s.readKecNetworkInterface(d.Get("network_interface_id").(string))
-			if err != nil {
-				return err
-			}
-			for k, _ := range networkInterface {
-				if k == "DNS1" || k == "DNS2" {
-					continue
-				}
-				delete(networkInterface, k)
-			}
-			extra = map[string]SdkResponseMapping{
-				"DNS1": {
-					Field: "dns1",
-				},
-				"DNS2": {
-					Field: "dns2",
+				"KeySet": {
+					Field: "key_id",
 				},
 			}
-			SdkResponseAutoResourceData(d, resource, networkInterface, extra)
-			break
+			SdkResponseAutoResourceData(d, r, data, extra)
+			if v, ok := d.GetOk("force_reinstall_system"); ok {
+				err = d.Set("force_reinstall_system", v)
+			} else {
+				err = d.Set("force_reinstall_system", false)
+			}
+			//control
+			_ = d.Set("has_modify_system_disk", false)
+			_ = d.Set("has_modify_password", false)
+			_ = d.Set("has_modify_keys", false)
+			return resource.NonRetryableError(err)
 		}
+	})
+}
+
+func (s *KecService) ReadAndSetKecInstances(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "InstanceId",
+			Type:    TransformWithN,
+		},
+		"project_id": {
+			Type: TransformWithN,
+		},
+		"vpc_id": {
+			Type: TransformWithFilter,
+		},
+		"subnet_id": {
+			Type: TransformWithFilter,
+		},
+		"network_interface": {
+			Type: TransformListFilter,
+		},
+		"instance_state": {
+			Type: TransformListFilter,
+		},
+		"availability_zone": {
+			mappings: map[string]string{
+				"availability_zone.name": "availability-zone-name",
+			},
+			Type: TransformListFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.readKecInstances(req)
+	if err != nil {
+		return err
 	}
 
-	//extension_network_interface
-	extra := map[string]SdkResponseMapping{
-		"NetworkInterfaceSet": {
-			Field: "extension_network_interface",
-			FieldRespFunc: func(i interface{}) interface{} {
-				var result []interface{}
-				for _, v := range i.([]interface{}) {
-					if v.(map[string]interface{})["NetworkInterfaceType"] != "primary" {
-						result = append(result, v)
-					}
-				}
-				return result
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		idFiled:     "InstanceId",
+		nameField:   "InstanceName",
+		targetField: "instances",
+		extra: map[string]SdkResponseMapping{
+			"KeySet": {
+				Field: "key_id",
 			},
 		},
-		"KeySet": {
-			Field: "key_id",
-		},
-	}
-	SdkResponseAutoResourceData(d, resource, data, extra)
-	if v, ok := d.GetOk("force_reinstall_system"); ok {
-		err = d.Set("force_reinstall_system", v)
-	} else {
-		err = d.Set("force_reinstall_system", false)
-	}
-	//control
-	_ = d.Set("has_modify_system_disk", false)
-	_ = d.Set("has_modify_password", false)
-	_ = d.Set("has_modify_keys", false)
-	return err
+	})
 }
 
 func (s *KecService) readKecNetworkInterface(networkInterfaceId string) (data map[string]interface{}, err error) {
@@ -150,30 +211,32 @@ func (s *KecService) readKecInstance(d *schema.ResourceData, instanceId string) 
 
 func (s *KecService) readKecInstances(condition map[string]interface{}) (data []interface{}, err error) {
 	var (
-		resp               *map[string]interface{}
-		kecInstanceResults interface{}
+		resp    *map[string]interface{}
+		results interface{}
 	)
-	conn := s.client.kecconn
-	action := "DescribeInstances"
-	logger.Debug(logger.ReqFormat, action, condition)
-	if condition == nil {
-		resp, err = conn.DescribeInstances(nil)
-		if err != nil {
-			return data, err
+	return pageQuery(condition, "MaxResults", "Marker", 200, 0, func(condition map[string]interface{}) ([]interface{}, error) {
+		conn := s.client.kecconn
+		action := "DescribeInstances"
+		logger.Debug(logger.ReqFormat, action, condition)
+		if condition == nil {
+			resp, err = conn.DescribeInstances(nil)
+			if err != nil {
+				return data, err
+			}
+		} else {
+			resp, err = conn.DescribeInstances(&condition)
+			if err != nil {
+				return data, err
+			}
 		}
-	} else {
-		resp, err = conn.DescribeInstances(&condition)
-		if err != nil {
-			return data, err
-		}
-	}
 
-	kecInstanceResults, err = getSdkValue("InstancesSet", *resp)
-	if err != nil {
+		results, err = getSdkValue("InstancesSet", *resp)
+		if err != nil {
+			return data, err
+		}
+		data = results.([]interface{})
 		return data, err
-	}
-	data = kecInstanceResults.([]interface{})
-	return data, err
+	})
 }
 
 func readKecNetworkInterfaces(d *schema.ResourceData, meta interface{}, condition map[string]interface{}) (data []interface{}, err error) {

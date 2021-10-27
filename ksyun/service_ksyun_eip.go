@@ -18,7 +18,7 @@ func (s *EipService) ReadAddresses(condition map[string]interface{}) (data []int
 		results interface{}
 	)
 
-	return pageQuery(condition, "MaxResults", "Marker", 200, 1, func(condition map[string]interface{}) ([]interface{}, error) {
+	return pageQuery(condition, "MaxResults", "NextToken", 200, 1, func(condition map[string]interface{}) ([]interface{}, error) {
 		conn := s.client.eipconn
 		action := "DescribeAddresses"
 		logger.Debug(logger.ReqFormat, action, condition)
