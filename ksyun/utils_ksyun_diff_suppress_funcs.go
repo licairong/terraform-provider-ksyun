@@ -187,3 +187,10 @@ func lbBackendServerDiffSuppressFunc(k, old, new string, d *schema.ResourceData)
 	}
 	return false
 }
+
+func volumeDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	if !d.IsNewResource() && d.HasChange("size") && k == "online_resize" {
+		return false
+	}
+	return true
+}

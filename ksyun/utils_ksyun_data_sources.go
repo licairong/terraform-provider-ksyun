@@ -14,6 +14,8 @@ type ksyunDataSource struct {
 	compute     map[string]interface{}
 }
 
+type matchPlugin func(*schema.ResourceData, map[string]interface{}) (map[string]interface{}, bool, error)
+
 func mergeDataSourcesReq(d *schema.ResourceData, r *schema.Resource, transform map[string]SdkReqTransform) (req map[string]interface{}, err error) {
 	if transform == nil {
 		transform = make(map[string]SdkReqTransform)
@@ -32,10 +34,35 @@ func mergeDataSourcesReq(d *schema.ResourceData, r *schema.Resource, transform m
 		SdkReqParameter{false})
 }
 
-func mergeDataSourcesResp(d *schema.ResourceData, r *schema.Resource, dataSource ksyunDataSource) (err error) {
+func mergeDataSourcesResp(d *schema.ResourceData, r *schema.Resource, dataSource ksyunDataSource, plugIns ...matchPlugin) (err error) {
 	var (
 		result []map[string]interface{}
 	)
+
+	if plugIns != nil && len(plugIns) > 0 {
+		for _, plugIn := range plugIns {
+			var filter []interface{}
+			for _, item := range dataSource.collection {
+				var (
+					temp map[string]interface{}
+					flag bool
+				)
+				temp, flag, err = plugIn(d, item.(map[string]interface{}))
+				if err != nil {
+					return err
+				}
+				if flag {
+					if temp != nil {
+						filter = append(filter, temp)
+					}
+				} else {
+					filter = append(filter, item.(map[string]interface{}))
+				}
+			}
+			dataSource.collection = filter
+		}
+	}
+
 	for _, item := range dataSource.collection {
 		var (
 			temp map[string]interface{}

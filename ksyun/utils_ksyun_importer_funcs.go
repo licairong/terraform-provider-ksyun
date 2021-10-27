@@ -254,3 +254,21 @@ func importBandWidthShareAssociate(d *schema.ResourceData, meta interface{}) ([]
 
 	return []*schema.ResourceData{d}, nil
 }
+
+func importVolumeAttach(d *schema.ResourceData, meta interface{}) ([]*schema.ResourceData, error) {
+	var err error
+	items := strings.Split(d.Id(), ":")
+	if len(items) < 2 {
+		return []*schema.ResourceData{d}, fmt.Errorf("import id must split with ':'")
+	}
+	err = d.Set("volume_id", items[0])
+	if err != nil {
+		return []*schema.ResourceData{d}, err
+	}
+	err = d.Set("instance_id", items[1])
+	if err != nil {
+		return []*schema.ResourceData{d}, err
+	}
+
+	return []*schema.ResourceData{d}, nil
+}

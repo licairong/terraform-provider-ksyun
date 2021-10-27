@@ -1423,7 +1423,7 @@ func (s *SlbService) ReadLoadBalancerAcls(condition map[string]interface{}) (dat
 		results interface{}
 	)
 
-	return pageQuery(condition, "MaxResults", "Marker", 200, 1, func(condition map[string]interface{}) ([]interface{}, error) {
+	return pageQuery(condition, "MaxResults", "NextToken", 5, 1, func(condition map[string]interface{}) ([]interface{}, error) {
 		conn := s.client.slbconn
 		action := "DescribeLoadBalancerAcls"
 		logger.Debug(logger.ReqFormat, action, condition)
@@ -1563,8 +1563,9 @@ func (s *SlbService) ReadAndSetLoadBalancerAcls(d *schema.ResourceData, r *schem
 
 	return mergeDataSourcesResp(d, r, ksyunDataSource{
 		collection:  data,
-		idFiled:     "HostHeaderId",
-		targetField: "host_headers",
+		idFiled:     "LoadBalancerAclId",
+		nameField:   "LoadBalancerAclName",
+		targetField: "lb_acls",
 		extra:       map[string]SdkResponseMapping{},
 	})
 }
