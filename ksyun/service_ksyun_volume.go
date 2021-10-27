@@ -17,7 +17,7 @@ func (s *EbsService) ReadVolumes(condition map[string]interface{}) (data []inter
 		resp    *map[string]interface{}
 		results interface{}
 	)
-	return pageQuery(condition, "MaxResults", "Marker", 50, 1, func(condition map[string]interface{}) ([]interface{}, error) {
+	return pageQuery(condition, "MaxResults", "Marker", 50, 0, func(condition map[string]interface{}) ([]interface{}, error) {
 		conn := s.client.ebsconn
 		action := "DescribeVolumes"
 		logger.Debug(logger.ReqFormat, action, condition)

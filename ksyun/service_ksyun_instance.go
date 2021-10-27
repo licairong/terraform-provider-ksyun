@@ -214,7 +214,7 @@ func (s *KecService) readKecInstances(condition map[string]interface{}) (data []
 		resp    *map[string]interface{}
 		results interface{}
 	)
-	return pageQuery(condition, "MaxResults", "Marker", 200, 1, func(condition map[string]interface{}) ([]interface{}, error) {
+	return pageQuery(condition, "MaxResults", "Marker", 200, 0, func(condition map[string]interface{}) ([]interface{}, error) {
 		conn := s.client.kecconn
 		action := "DescribeInstances"
 		logger.Debug(logger.ReqFormat, action, condition)
