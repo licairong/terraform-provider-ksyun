@@ -682,14 +682,14 @@ func SdkResponseAutoMapping(resource *schema.Resource, collectField string, item
 							if l, ok := v.([]interface{}); ok {
 								_, result, _ := SdkSliceMapping(nil, l, SdkSliceData{
 									SliceMappingFunc: func(m1 map[string]interface{}) map[string]interface{} {
-										return SdkResponseAutoMapping(resource, collectField+"."+target, m1, nil, nil)
+										return SdkResponseAutoMapping(resource, collectField+"."+target, m1, computeItem, extraMapping)
 									},
 								})
 								extra[target] = result
 							} else if m, ok := v.(map[string]interface{}); ok {
 								result, _ := SdkMapMapping(m, SdkSliceData{
 									SliceMappingFunc: func(m1 map[string]interface{}) map[string]interface{} {
-										return SdkResponseAutoMapping(resource, collectField+"."+target, m1, nil, nil)
+										return SdkResponseAutoMapping(resource, collectField+"."+target, m1, computeItem, extraMapping)
 									},
 								})
 								extra[target] = []map[string]interface{}{
