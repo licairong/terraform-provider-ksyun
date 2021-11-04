@@ -101,6 +101,8 @@ func Provider() terraform.ResourceProvider {
 			"ksyun_vpn_tunnels":                   dataSourceKsyunVpnTunnels(),
 			"ksyun_bwses":                         dataSourceKsyunBandWidthShares(),
 			"ksyun_bare_metals":                   dataSourceKsyunBareMetals(),
+			"ksyun_bare_metal_images":             dataSourceKsyunBareMetalImages(),
+			"ksyun_bare_metal_raid_attributes":    dataSourceKsyunBareMetalRaidAttributes(),
 		},
 		ResourcesMap: map[string]*schema.Resource{
 			"ksyun_eip":                              resourceKsyunEip(),

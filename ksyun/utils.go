@@ -323,6 +323,20 @@ func transformWithFilter(v interface{}, k string, t SdkReqTransform, index int, 
 	if x, ok := v.([]interface{}); ok {
 		v = schema.NewSet(schema.HashString, x)
 	}
+	if x, ok := v.(string); ok {
+		if ok, j, err := transformFieldReqFunc(v, k, t, index, req); ok {
+			if err != nil {
+				return index, fmt.Errorf("error on transformWithFilter with transformFieldReqFunc %s", err)
+			}
+			return j, nil
+		}
+		if strings.TrimSpace(t.mapping) == "" {
+			(*req)["Filter."+strconv.Itoa(1)+".Name"] = Downline2Filter(k)
+		} else {
+			(*req)["Filter."+strconv.Itoa(1)+".Name"] = t.mapping
+		}
+		(*req)["Filter."+strconv.Itoa(index)+".Value."+strconv.Itoa(1)] = x
+	}
 	if x, ok := v.(*schema.Set); ok {
 		if ok, j, err := transformFieldReqFunc(v, k, t, index, req); ok {
 			if err != nil {

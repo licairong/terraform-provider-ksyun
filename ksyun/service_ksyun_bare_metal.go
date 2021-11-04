@@ -761,3 +761,119 @@ func (s *BareMetalService) RemoveBareMetal(d *schema.ResourceData) (err error) {
 	}
 	return ksyunApiCallNew([]ApiCall{call}, d, s.client, true)
 }
+
+func (s *BareMetalService) ReadImages(condition map[string]interface{}) (data []interface{}, err error) {
+	var (
+		resp    *map[string]interface{}
+		results interface{}
+	)
+
+	return pageQuery(condition, "MaxResults", "NextToken", 200, 1, func(condition map[string]interface{}) ([]interface{}, error) {
+		conn := s.client.epcconn
+		action := "DescribeImages"
+		logger.Debug(logger.ReqFormat, action, condition)
+		if condition == nil {
+			resp, err = conn.DescribeImages(nil)
+			if err != nil {
+				return data, err
+			}
+		} else {
+			resp, err = conn.DescribeImages(&condition)
+			if err != nil {
+				return data, err
+			}
+		}
+
+		results, err = getSdkValue("ImageSet", *resp)
+		if err != nil {
+			return data, err
+		}
+		data = results.([]interface{})
+		return data, err
+	})
+}
+
+func (s *BareMetalService) ReadAndSetImages(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"ids": {
+			mapping: "ImageId",
+			Type:    TransformWithN,
+		},
+		"image_type": {
+			mapping: "image-type",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadImages(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		idFiled:     "ImageId",
+		targetField: "images",
+		nameField:   "ImageName",
+		extra:       map[string]SdkResponseMapping{},
+	})
+}
+
+func (s *BareMetalService) ReadRaidAttributes(condition map[string]interface{}) (data []interface{}, err error) {
+	var (
+		resp    *map[string]interface{}
+		results interface{}
+	)
+
+	return pageQuery(condition, "MaxResults", "NextToken", 200, 1, func(condition map[string]interface{}) ([]interface{}, error) {
+		conn := s.client.epcconn
+		action := "DescribeEpcRaidAttributes"
+		logger.Debug(logger.ReqFormat, action, condition)
+		if condition == nil {
+			resp, err = conn.DescribeEpcRaidAttributes(nil)
+			if err != nil {
+				return data, err
+			}
+		} else {
+			resp, err = conn.DescribeEpcRaidAttributes(&condition)
+			if err != nil {
+				return data, err
+			}
+		}
+
+		results, err = getSdkValue("EpcRaidAttributeSet", *resp)
+		if err != nil {
+			return data, err
+		}
+		data = results.([]interface{})
+		return data, err
+	})
+}
+
+func (s *BareMetalService) ReadAndSetRaidAttributes(d *schema.ResourceData, r *schema.Resource) (err error) {
+	transform := map[string]SdkReqTransform{
+		"host_type": {
+			mapping: "host-type",
+			Type:    TransformWithFilter,
+		},
+	}
+	req, err := mergeDataSourcesReq(d, r, transform)
+	if err != nil {
+		return err
+	}
+	data, err := s.ReadRaidAttributes(req)
+	if err != nil {
+		return err
+	}
+
+	return mergeDataSourcesResp(d, r, ksyunDataSource{
+		collection:  data,
+		idFiled:     "RaidId",
+		targetField: "raid_attributes",
+		nameField:   "TemplateName",
+		extra:       map[string]SdkResponseMapping{},
+	})
+}

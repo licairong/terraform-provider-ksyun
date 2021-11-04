@@ -193,7 +193,7 @@ func resourceKsyunBareMetal() *schema.Resource {
 					"EXT4",
 					"XFS",
 				}, false),
-				Default: "XFS",
+				Default: "EXT4",
 			},
 			"data_file_type": {
 				Type:     schema.TypeString,

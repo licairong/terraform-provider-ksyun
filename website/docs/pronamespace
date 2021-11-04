@@ -48,4 +48,7 @@ network_acl:               vpc,
 network_acl_associate:     vpc,
 network_acl_entry:         vpc,
 rabbitmq_instance:         kcs,
-rabbitmq_security_rule:    kcs
+rabbitmq_security_rule:    kcs,
+bare_metal:                epc,
+bare_metal_images:         epc,
+bare_metal_raid_attributes:epc

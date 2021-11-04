@@ -3,7 +3,6 @@ package ksyun
 import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
-	"github.com/terraform-providers/terraform-provider-ksyun/logger"
 	"strconv"
 )
 
@@ -70,7 +69,6 @@ func bareMetalCustomizeDiff(d *schema.ResourceDiff, meta interface{}) (err error
 			len(d.Get("extension_security_group_ids").(*schema.Set).List()) > 0 ||
 			d.Get("extension_dns1") != "" ||
 			d.Get("extension_dns2") != "" {
-			logger.Debug(logger.RespFormat, "demo", d.Get("extension_security_group_ids"))
 			return fmt.Errorf("extension network must set empty when network_interface_mode is boun4 or single  ssdsd")
 		}
 	}

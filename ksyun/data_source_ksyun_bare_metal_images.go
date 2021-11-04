@@ -5,11 +5,19 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
 )
 
-func dataSourceKsyunSSHKeys() *schema.Resource {
+func dataSourceKsyunBareMetalImages() *schema.Resource {
 	return &schema.Resource{
-		Read: dataSourceKsyunSSHKeysRead,
+		Read: dataSourceKsyunBareMetalImagesRead,
 		Schema: map[string]*schema.Schema{
 			"ids": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Set: schema.HashString,
+			},
+			"image_type": {
 				Type:     schema.TypeSet,
 				Optional: true,
 				Elem: &schema.Schema{
@@ -20,7 +28,7 @@ func dataSourceKsyunSSHKeys() *schema.Resource {
 			"name_regex": {
 				Type:         schema.TypeString,
 				Optional:     true,
-				ValidateFunc: validation.ValidateRegexp,
+				ValidateFunc: validation.StringIsValidRegExp,
 			},
 			"output_file": {
 				Type:     schema.TypeString,
@@ -31,39 +39,32 @@ func dataSourceKsyunSSHKeys() *schema.Resource {
 				Type:     schema.TypeInt,
 				Computed: true,
 			},
-			"key_name": {
-				Type:          schema.TypeString,
-				Optional:      true,
-				ConflictsWith: []string{"key_names"},
-			},
-			"key_names": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-				Set:           schema.HashString,
-				ConflictsWith: []string{"key_name"},
-			},
-
-			"keys": {
+			"images": {
 				Type:     schema.TypeList,
 				Computed: true,
 				Elem: &schema.Resource{
 					Schema: map[string]*schema.Schema{
-						"key_id": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"key_name": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-						"public_key": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
 						"create_time": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"os_type": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"os_name": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"image_type": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"image_name": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
+						"image_id": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
@@ -74,7 +75,7 @@ func dataSourceKsyunSSHKeys() *schema.Resource {
 	}
 }
 
-func dataSourceKsyunSSHKeysRead(d *schema.ResourceData, meta interface{}) error {
-	sksService := SksService{meta.(*KsyunClient)}
-	return sksService.ReadAndSetKeys(d, dataSourceKsyunSSHKeys())
+func dataSourceKsyunBareMetalImagesRead(d *schema.ResourceData, meta interface{}) error {
+	bareMetalService := BareMetalService{meta.(*KsyunClient)}
+	return bareMetalService.ReadAndSetImages(d, dataSourceKsyunBareMetalImages())
 }
