@@ -60,3 +60,51 @@ func networkAclEntryCustomizeDiff(d *schema.ResourceDiff, meta interface{}) (err
 	}
 	return err
 }
+
+func bareMetalCustomizeDiff(d *schema.ResourceDiff, meta interface{}) (err error) {
+
+	if d.Get("network_interface_mode") != "dual" {
+		if d.Get("extension_subnet_id") != "" ||
+			d.Get("extension_private_ip_address") != "" ||
+			len(d.Get("extension_security_group_ids").(*schema.Set).List()) > 0 ||
+			d.Get("extension_dns1") != "" ||
+			d.Get("extension_dns2") != "" {
+			return fmt.Errorf("extension network must set empty when network_interface_mode is boun4 or single  ssdsd")
+		}
+	}
+
+	if d.Id() != "" && d.HasChange("network_interface_mode") {
+		o, n := d.GetChange("network_interface_mode")
+		var flag bool
+		if o == "bond4" && n == "single" {
+			flag = true
+		}
+		if o == "single" && n == "bond4" {
+			flag = true
+		}
+		if o == "dual" && n == "single" {
+			flag = true
+			if d.Get("extension_subnet_id") != "" ||
+				d.Get("extension_private_ip_address") != "" ||
+				len(d.Get("extension_security_group_ids").(*schema.Set).List()) > 0 ||
+				d.Get("extension_dns1") != "" ||
+				d.Get("extension_dns2") != "" {
+				return fmt.Errorf("extension network must set empty when network_interface_mode is boun4 or single")
+			}
+		}
+		if o == "dual" && n == "bond4" {
+			flag = true
+			if d.Get("extension_subnet_id") != "" ||
+				d.Get("extension_private_ip_address") != "" ||
+				len(d.Get("extension_security_group_ids").(*schema.Set).List()) > 0 ||
+				d.Get("extension_dns1") != "" ||
+				d.Get("extension_dns2") != "" {
+				return fmt.Errorf("extension network must set empty when network_interface_mode is boun4 or single")
+			}
+		}
+		if !flag {
+			return d.ForceNew("network_interface_mode")
+		}
+	}
+	return err
+}
