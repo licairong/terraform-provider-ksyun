@@ -194,3 +194,19 @@ func volumeDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
 	}
 	return true
 }
+
+func bareMetalDiffSuppressFunc(k, old, new string, d *schema.ResourceData) bool {
+	if d.Get("network_interface_mode") != "dual" && strings.HasPrefix(k, "extension_") {
+		return true
+	}
+	if d.Get("network_interface_mode") != "bond4" && k == "bond_attribute" {
+		return true
+	}
+	if (d.IsNewResource() || d.Get("host_type") != "COLO") && (k == "server_ip" || k == "path") {
+		return true
+	}
+	if d.IsNewResource() && (k == "host_status" || k == "force_re_install") {
+		return true
+	}
+	return false
+}
