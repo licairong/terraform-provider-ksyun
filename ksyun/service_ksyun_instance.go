@@ -94,6 +94,11 @@ func (s *KecService) readAndSetKecInstance(d *schema.ResourceData, r *schema.Res
 					Field: "key_id",
 				},
 			}
+			//tag
+			err = mergeTagsData(d, &data, s.client, "instance")
+			if err != nil {
+				return resource.NonRetryableError(err)
+			}
 			SdkResponseAutoResourceData(d, r, data, extra)
 			if v, ok := d.GetOk("force_reinstall_system"); ok {
 				err = d.Set("force_reinstall_system", v)
@@ -276,6 +281,12 @@ func (s *KecService) createKecInstance(d *schema.ResourceData, resource *schema.
 		return err
 	}
 	callbacks = append(callbacks, createCall)
+	tagService := TagService{s.client}
+	tagCall, err := tagService.ReplaceResourcesTagsWithResourceCall(d, resource, "instance", false)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, tagCall)
 	dnsCall, err := s.initKecInstanceNetwork(d, resource)
 	if err != nil {
 		return err
@@ -295,6 +306,13 @@ func (s *KecService) modifyKecInstance(d *schema.ResourceData, resource *schema.
 		return err
 	}
 	callbacks = append(callbacks, projectCall)
+	//tag
+	tagService := TagService{s.client}
+	tagCall, err := tagService.ReplaceResourcesTagsWithResourceCall(d, resource, "instance", true)
+	if err != nil {
+		return err
+	}
+	callbacks = append(callbacks, tagCall)
 	//name
 	nameCall, err := s.modifyKecInstanceName(d, resource)
 	if err != nil {
@@ -401,6 +419,7 @@ func (s *KecService) createKecInstanceCommon(d *schema.ResourceData, resource *s
 		"instance_status":        {Ignore: true},
 		"force_delete":           {Ignore: true},
 		"force_reinstall_system": {Ignore: true},
+		"tags":                   {Ignore: true},
 	}
 	createReq, err := SdkRequestAutoMapping(d, resource, false, transform, nil, SdkReqParameter{
 		onlyTransform: false,
@@ -432,7 +451,7 @@ func (s *KecService) createKecInstanceCommon(d *schema.ResourceData, resource *s
 				}
 				d.SetId(instanceId.(string))
 			}
-			err = s.checkKecInstanceState(d, "", []string{"active"}, d.Timeout(schema.TimeoutUpdate))
+			err = s.checkKecInstanceState(d, "", []string{"active"}, d.Timeout(schema.TimeoutCreate))
 			if err != nil {
 				return err
 			}
@@ -964,7 +983,7 @@ func (s *KecService) checkKecInstanceState(d *schema.ResourceData, instanceId st
 		Refresh:    s.kecInstanceStateRefreshFunc(d, instanceId, []string{"error"}),
 		Timeout:    timeout,
 		Delay:      10 * time.Second,
-		MinTimeout: 1 * time.Minute,
+		MinTimeout: 1 * time.Second,
 	}
 	_, err = stateConf.WaitForState()
 	return err
