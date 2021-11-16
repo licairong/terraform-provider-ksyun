@@ -59,6 +59,7 @@ func resourceKsyunEip() *schema.Resource {
 				Optional: true,
 				Default:  0,
 			},
+			"tags": tagsSchema(),
 
 			"instance_id": {
 				Type:     schema.TypeString,
