@@ -245,6 +245,7 @@ func resourceKsyunInstance() *schema.Resource {
 				Optional: true,
 				Computed: true,
 			},
+			"tags": tagsSchema(),
 			"has_init_info": {
 				Type:     schema.TypeBool,
 				Computed: true,
