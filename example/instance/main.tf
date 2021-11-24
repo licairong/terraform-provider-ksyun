@@ -40,7 +40,6 @@ resource "ksyun_instance" "default" {
 //  dns1 = "198.18.254.30"
 //  dns2 = "198.18.254.31"
   tags = {
-    "key1" ="123",
-    "key2" ="xx",
+    "xym-test" ="sdsds",
   }
 }
