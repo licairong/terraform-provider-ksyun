@@ -246,10 +246,10 @@ func resourceKsyunInstance() *schema.Resource {
 				Computed: true,
 			},
 			"tags": tagsSchema(),
-			"has_init_info": {
-				Type:     schema.TypeBool,
-				Computed: true,
-			},
+			//"has_init_info": {
+			//	Type:     schema.TypeBool,
+			//	Computed: true,
+			//},
 			//some control
 			"has_modify_system_disk": {
 				Type:     schema.TypeBool,
@@ -272,6 +272,11 @@ func resourceKsyunInstance() *schema.Resource {
 			},
 
 			"network_interface_id": {
+				Type:     schema.TypeString,
+				Computed: true,
+			},
+
+			"instance_id": {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
