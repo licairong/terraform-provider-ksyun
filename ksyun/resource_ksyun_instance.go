@@ -290,7 +290,7 @@ func resourceKsyunInstanceCreate(d *schema.ResourceData, meta interface{}) (err 
 	if err != nil {
 		return fmt.Errorf("error on creating Instance: %s", err)
 	}
-	return err
+	return resourceKsyunInstanceRead(d, meta)
 }
 
 func resourceKsyunInstanceRead(d *schema.ResourceData, meta interface{}) (err error) {
