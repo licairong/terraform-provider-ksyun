@@ -201,10 +201,11 @@ func (s *TagService) CreateTagCommonCall(req map[string]interface{}, isSetId boo
 	}
 	return callback, err
 }
-func (s *TagService) ReplaceResourcesTagsCommonCall(req map[string]interface{}) (callback ApiCall, err error) {
+func (s *TagService) ReplaceResourcesTagsCommonCall(req map[string]interface{}, disableDryRun bool) (callback ApiCall, err error) {
 	callback = ApiCall{
-		param:  &req,
-		action: "ReplaceResourcesTags",
+		param:         &req,
+		action:        "ReplaceResourcesTags",
+		disableDryRun: disableDryRun,
 		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
 			if _, ok := (*call.param)["ReplaceTags"]; !ok {
 				instanceId := d.Id()
@@ -243,10 +244,10 @@ func (s *TagService) ReplaceResourcesTagsCall(d *schema.ResourceData, r *schema.
 	if err != nil {
 		return callback, err
 	}
-	return s.ReplaceResourcesTagsCommonCall(req)
+	return s.ReplaceResourcesTagsCommonCall(req, false)
 }
 
-func (s *TagService) ReplaceResourcesTagsWithResourceCall(d *schema.ResourceData, r *schema.Resource, resourceType string, isUpdate bool) (callback ApiCall, err error) {
+func (s *TagService) ReplaceResourcesTagsWithResourceCall(d *schema.ResourceData, r *schema.Resource, resourceType string, isUpdate bool, disableDryRun bool) (callback ApiCall, err error) {
 	transform := map[string]SdkReqTransform{
 		"tags": {
 			FieldReqFunc: func(i interface{}, s string, m map[string]string, i2 int, s2 string, m2 *map[string]interface{}) (int, error) {
@@ -267,7 +268,7 @@ func (s *TagService) ReplaceResourcesTagsWithResourceCall(d *schema.ResourceData
 	}
 	if len(req) > 0 {
 		req["ResourceType"] = resourceType
-		return s.ReplaceResourcesTagsCommonCall(req)
+		return s.ReplaceResourcesTagsCommonCall(req, disableDryRun)
 	}
 	return callback, err
 }
