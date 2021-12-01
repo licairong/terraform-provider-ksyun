@@ -2,6 +2,7 @@ package ksyun
 
 import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"strings"
 )
 
 func tagsSchema() *schema.Schema {
@@ -16,6 +17,13 @@ func mergeTagsData(d *schema.ResourceData, data *map[string]interface{}, client 
 	tagService := TagService{client}
 	tags, err = tagService.ReadTagByResourceId(d, d.Id(), resourceType)
 	if err != nil {
+		//此处暂时兼容如果没有更改tags可以忽略listTags的权限检查。做到最大兼容性
+		if !d.HasChange("tags") {
+			errMessage := strings.ToLower(err.Error())
+			if strings.Contains(errMessage, "lack of policy") {
+				return nil
+			}
+		}
 		return err
 	}
 	tagMap := make(map[string]interface{})
