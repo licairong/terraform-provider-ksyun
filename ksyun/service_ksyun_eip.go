@@ -188,7 +188,7 @@ func (s *EipService) CreateAddress(d *schema.ResourceData, r *schema.Resource) (
 		return err
 	}
 	tagService := TagService{s.client}
-	tagCall, err := tagService.ReplaceResourcesTagsWithResourceCall(d, r, "eip", false)
+	tagCall, err := tagService.ReplaceResourcesTagsWithResourceCall(d, r, "eip", false, true)
 	if err != nil {
 		return err
 	}
@@ -258,7 +258,7 @@ func (s *EipService) ModifyAddress(d *schema.ResourceData, r *schema.Resource) (
 		return err
 	}
 	tagService := TagService{s.client}
-	tagCall, err := tagService.ReplaceResourcesTagsWithResourceCall(d, r, "eip", true)
+	tagCall, err := tagService.ReplaceResourcesTagsWithResourceCall(d, r, "eip", true, false)
 	if err != nil {
 		return err
 	}
