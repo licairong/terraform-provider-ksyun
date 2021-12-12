@@ -35,50 +35,51 @@ func (s *KecService) readAndSetKecInstance(d *schema.ResourceData, r *schema.Res
 				},
 			}
 			SdkResponseAutoResourceData(d, r, data["InstanceState"], stateExtra)
-			//Primary network_interface
-			for _, vif := range data["NetworkInterfaceSet"].([]interface{}) {
-				if vif.(map[string]interface{})["NetworkInterfaceType"] == "primary" {
-					extra := map[string]SdkResponseMapping{
-						"SecurityGroupSet": {
-							Field: "security_group_id",
-							FieldRespFunc: func(i interface{}) interface{} {
-								var result []interface{}
-								for _, v := range i.([]interface{}) {
-									result = append(result, v.(map[string]interface{})["SecurityGroupId"])
-								}
-								return result
+			extra := map[string]SdkResponseMapping{}
+			if data["NetworkInterfaceSet"] != nil {
+				//Primary network_interface
+				for _, vif := range data["NetworkInterfaceSet"].([]interface{}) {
+					if vif.(map[string]interface{})["NetworkInterfaceType"] == "primary" {
+						extra := map[string]SdkResponseMapping{
+							"SecurityGroupSet": {
+								Field: "security_group_id",
+								FieldRespFunc: func(i interface{}) interface{} {
+									var result []interface{}
+									for _, v := range i.([]interface{}) {
+										result = append(result, v.(map[string]interface{})["SecurityGroupId"])
+									}
+									return result
+								},
 							},
-						},
-					}
-					SdkResponseAutoResourceData(d, r, vif, extra)
-					//read dns info
-					var networkInterface map[string]interface{}
-					networkInterface, err = s.readKecNetworkInterface(d.Get("network_interface_id").(string))
-					if err != nil {
-						return resource.NonRetryableError(err)
-					}
-					for k, _ := range networkInterface {
-						if k == "DNS1" || k == "DNS2" {
-							continue
 						}
-						delete(networkInterface, k)
+						SdkResponseAutoResourceData(d, r, vif, extra)
+						//read dns info
+						var networkInterface map[string]interface{}
+						networkInterface, err = s.readKecNetworkInterface(d.Get("network_interface_id").(string))
+						if err != nil {
+							return resource.NonRetryableError(err)
+						}
+						for k, _ := range networkInterface {
+							if k == "DNS1" || k == "DNS2" {
+								continue
+							}
+							delete(networkInterface, k)
+						}
+						extra = map[string]SdkResponseMapping{
+							"DNS1": {
+								Field: "dns1",
+							},
+							"DNS2": {
+								Field: "dns2",
+							},
+						}
+						SdkResponseAutoResourceData(d, r, networkInterface, extra)
+						break
 					}
-					extra = map[string]SdkResponseMapping{
-						"DNS1": {
-							Field: "dns1",
-						},
-						"DNS2": {
-							Field: "dns2",
-						},
-					}
-					SdkResponseAutoResourceData(d, r, networkInterface, extra)
-					break
 				}
-			}
 
-			//extension_network_interface
-			extra := map[string]SdkResponseMapping{
-				"NetworkInterfaceSet": {
+				//extension_network_interface
+				extra["NetworkInterfaceSet"] = SdkResponseMapping{
 					Field: "extension_network_interface",
 					FieldRespFunc: func(i interface{}) interface{} {
 						var result []interface{}
@@ -89,11 +90,12 @@ func (s *KecService) readAndSetKecInstance(d *schema.ResourceData, r *schema.Res
 						}
 						return result
 					},
-				},
-				"KeySet": {
-					Field: "key_id",
-				},
+				}
 			}
+			extra["KeySet"] = SdkResponseMapping{
+				Field: "key_id",
+			}
+
 			//tag
 			if len(disableSetTag) == 0 || !disableSetTag[0] {
 				err = mergeTagsData(d, &data, s.client, "instance")
