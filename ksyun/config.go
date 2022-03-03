@@ -18,6 +18,7 @@ import (
 	"github.com/KscSDK/ksc-sdk-go/service/sks"
 	"github.com/KscSDK/ksc-sdk-go/service/slb"
 	"github.com/KscSDK/ksc-sdk-go/service/sqlserver"
+	"github.com/KscSDK/ksc-sdk-go/service/tag"
 	"github.com/KscSDK/ksc-sdk-go/service/tagv2"
 	"github.com/KscSDK/ksc-sdk-go/service/vpc"
 	"github.com/ks3sdklib/aws-sdk-go/aws"
@@ -69,6 +70,7 @@ func (c *Config) Client() (*KsyunClient, error) {
 	client.rabbitmqconn = rabbitmq.SdkNew(cli, cfg, url)
 	client.bwsconn = bws.SdkNew(cli, cfg, url)
 	client.tagconn = tagv2.SdkNew(cli, cfg, url)
+	client.tagv1conn = tag.SdkNew(cli, cfg, url)
 
 	credentials := credentials.NewStaticCredentials(c.AccessKey, c.SecretKey, "")
 	client.ks3conn = s3.New(&aws.Config{
