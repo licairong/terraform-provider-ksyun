@@ -15,7 +15,7 @@ func dataSourceKsyunTags() *schema.Resource {
 				Optional: true,
 			},
 
-			"key": {
+			"keys": {
 				Type:     schema.TypeSet,
 				Optional: true,
 				Elem: &schema.Schema{
@@ -23,7 +23,7 @@ func dataSourceKsyunTags() *schema.Resource {
 				},
 				Set: schema.HashString,
 			},
-			"value": {
+			"values": {
 				Type:     schema.TypeSet,
 				Optional: true,
 				Elem: &schema.Schema{
@@ -31,7 +31,7 @@ func dataSourceKsyunTags() *schema.Resource {
 				},
 				Set: schema.HashString,
 			},
-			"resource_type": {
+			"resource_types": {
 				Type:     schema.TypeSet,
 				Optional: true,
 				Elem: &schema.Schema{
@@ -39,7 +39,7 @@ func dataSourceKsyunTags() *schema.Resource {
 				},
 				Set: schema.HashString,
 			},
-			"resource_id": {
+			"resource_ids": {
 				Type:     schema.TypeSet,
 				Optional: true,
 				Elem: &schema.Schema{

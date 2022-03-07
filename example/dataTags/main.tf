@@ -8,16 +8,16 @@ data "ksyun_tags" "default" {
 
   # optional
   # eg. key = ["tag_key1", "tag_key2", ...]
-  key = []
+  keys = []
   # optional
   # eg. value = ["tag_value1", ...]
-  value = []
+  values = []
   # optional
   # eg. resource_type = ["kec-instance", "eip", ...]
-  resource_type = []
+  resource_types = []
   # optional
   # eg. key = ["instance_uuid", ...]
-  resource_id = []
+  resource_ids = []
 
 }
 

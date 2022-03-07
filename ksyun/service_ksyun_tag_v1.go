@@ -136,19 +136,19 @@ func (s *TagV1Service) DeleteTag(d *schema.ResourceData) (err error) {
 
 func (s *TagV1Service) ReadAndSetTags(d *schema.ResourceData, r *schema.Resource) (err error) {
 	transform := map[string]SdkReqTransform{
-		"key": {
+		"keys": {
 			mapping: "key",
 			Type:    TransformWithFilter,
 		},
-		"value": {
+		"values": {
 			mapping: "value",
 			Type:    TransformWithFilter,
 		},
-		"resource_type": {
+		"resource_types": {
 			mapping: "resource-type",
 			Type:    TransformWithFilter,
 		},
-		"resource_id": {
+		"resource_ids": {
 			mapping: "resource-id",
 			Type:    TransformWithFilter,
 		},
