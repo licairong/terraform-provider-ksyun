@@ -16,6 +16,7 @@ import (
 	"github.com/KscSDK/ksc-sdk-go/service/sks"
 	"github.com/KscSDK/ksc-sdk-go/service/slb"
 	"github.com/KscSDK/ksc-sdk-go/service/sqlserver"
+	"github.com/KscSDK/ksc-sdk-go/service/tag"
 	"github.com/KscSDK/ksc-sdk-go/service/tagv2"
 	"github.com/KscSDK/ksc-sdk-go/service/vpc"
 	"github.com/ks3sdklib/aws-sdk-go/service/s3"
@@ -42,4 +43,5 @@ type KsyunClient struct {
 	rabbitmqconn  *rabbitmq.Rabbitmq   `json:"rabbitmqconn,omitempty"`
 	bwsconn       *bws.Bws             `json:"bwsconn,omitempty"`
 	tagconn       *tagv2.Tagv2         `json:"tagconn,omitempty"`
+	tagv1conn     *tag.Tag             `json:"tagv1conn,omitempty"`
 }

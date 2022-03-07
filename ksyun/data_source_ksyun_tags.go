@@ -4,30 +4,42 @@ import (
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 )
 
-func dataSourceKsyunRoutes() *schema.Resource {
+func dataSourceKsyunTags() *schema.Resource {
 	return &schema.Resource{
-		Read: dataSourceKsyunRoutesRead,
+		Read: dataSourceKsyunTagsRead,
+
 		Schema: map[string]*schema.Schema{
-			"ids": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-				Set: schema.HashString,
-			},
 
 			"output_file": {
 				Type:     schema.TypeString,
 				Optional: true,
 			},
 
-			"total_count": {
-				Type:     schema.TypeInt,
-				Computed: true,
+			"keys": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Set: schema.HashString,
 			},
-
-			"vpc_ids": {
+			"values": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Set: schema.HashString,
+			},
+			"resource_types": {
+				Type:     schema.TypeSet,
+				Optional: true,
+				Elem: &schema.Schema{
+					Type: schema.TypeString,
+				},
+				Set: schema.HashString,
+			},
+			"resource_ids": {
 				Type:     schema.TypeSet,
 				Optional: true,
 				Elem: &schema.Schema{
@@ -36,16 +48,7 @@ func dataSourceKsyunRoutes() *schema.Resource {
 				Set: schema.HashString,
 			},
 
-			"instance_ids": {
-				Type:     schema.TypeSet,
-				Optional: true,
-				Elem: &schema.Schema{
-					Type: schema.TypeString,
-				},
-				Set: schema.HashString,
-			},
-
-			"routes": {
+			"tags": {
 				Type:     schema.TypeList,
 				Computed: true,
 				Elem: &schema.Resource{
@@ -54,46 +57,19 @@ func dataSourceKsyunRoutes() *schema.Resource {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
-
-						"route_id": {
+						"key": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
-
-						"vpc_id": {
+						"value": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
-
-						"destination_cidr_block": {
+						"resource_type": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
-
-						"route_type": {
-							Type:     schema.TypeString,
-							Computed: true,
-						},
-
-						"next_hop_set": {
-							Type:     schema.TypeList,
-							Computed: true,
-							Elem: &schema.Resource{
-								Schema: map[string]*schema.Schema{
-									"gateway_id": {
-										Type:     schema.TypeString,
-										Computed: true,
-									},
-
-									"gateway_name": {
-										Type:     schema.TypeString,
-										Computed: true,
-									},
-								},
-							},
-						},
-
-						"create_time": {
+						"resource_id": {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
@@ -103,8 +79,7 @@ func dataSourceKsyunRoutes() *schema.Resource {
 		},
 	}
 }
-
-func dataSourceKsyunRoutesRead(d *schema.ResourceData, meta interface{}) error {
-	vpcService := VpcService{meta.(*KsyunClient)}
-	return vpcService.ReadAndSetRoutes(d, dataSourceKsyunRoutes())
+func dataSourceKsyunTagsRead(d *schema.ResourceData, meta interface{}) error {
+	tagService := TagV1Service{meta.(*KsyunClient)}
+	return tagService.ReadAndSetTags(d, dataSourceKsyunTags())
 }
