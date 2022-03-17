@@ -395,17 +395,25 @@ func (s *KecService) modifyKecInstance(d *schema.ResourceData, resource *schema.
 	}
 	callbacks = append(callbacks, hostNameCall)
 
+	//if hostNameCall.executeCall != nil {
+	//	stopCall, err := s.stopKecInstance(d)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	callbacks = append(callbacks, stopCall)
+	//	startCall, err := s.startKecInstance(d)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	callbacks = append(callbacks, startCall)
+	//}
+
 	if specCall.executeCall != nil || hostNameCall.executeCall != nil {
-		stopCall, err := s.stopKecInstance(d)
+		rebootCall, err := s.rebootKecInstance(d)
 		if err != nil {
 			return err
 		}
-		callbacks = append(callbacks, stopCall)
-		startCall, err := s.startKecInstance(d)
-		if err != nil {
-			return err
-		}
-		callbacks = append(callbacks, startCall)
+		callbacks = append(callbacks, rebootCall)
 	}
 	return ksyunApiCallNew(callbacks, d, s.client, true)
 }
@@ -504,7 +512,7 @@ func (s *KecService) modifyKecInstanceType(d *schema.ResourceData, resource *sch
 			},
 			afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
 				logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
-				err = s.checkKecInstanceState(d, "", []string{"resize_success_local", "migrating_success_off_line"}, d.Timeout(schema.TimeoutUpdate))
+				err = s.checkKecInstanceState(d, "", []string{"resize_success_local", "migrating_success", "migrating_success_off_line"}, d.Timeout(schema.TimeoutUpdate))
 				if err != nil {
 					return err
 				}
@@ -885,6 +893,47 @@ func (s *KecService) stopOrStartKecInstance(d *schema.ResourceData) (callback Ap
 		} else {
 			return s.stopKecInstance(d)
 		}
+	}
+	return callback, err
+}
+
+func (s *KecService) rebootKecInstance(d *schema.ResourceData) (callback ApiCall, err error) {
+	updateReq := map[string]interface{}{
+		"InstanceId.1": d.Id(),
+	}
+	callback = ApiCall{
+		param:  &updateReq,
+		action: "RebootInstances",
+		beforeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (doExecute bool, err error) {
+			data, err := s.readKecInstance(d, "", false)
+			if err != nil {
+				return doExecute, err
+			}
+			status, err := getSdkValue("InstanceState.Name", data)
+			if err != nil {
+				return doExecute, err
+			}
+			if status.(string) == "stopped" {
+				doExecute = false
+			} else {
+				doExecute = true
+			}
+			return doExecute, err
+		},
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.kecconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.RebootInstances(call.param)
+			return resp, err
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			err = s.checkKecInstanceState(d, "", []string{"active"}, d.Timeout(schema.TimeoutUpdate))
+			if err != nil {
+				return err
+			}
+			return err
+		},
 	}
 	return callback, err
 }
