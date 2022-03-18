@@ -59,7 +59,7 @@ func (s *KecService) readAndSetKecInstance(d *schema.ResourceData, r *schema.Res
 						if err != nil {
 							return resource.NonRetryableError(err)
 						}
-						for k, _ := range networkInterface {
+						for k := range networkInterface {
 							if k == "DNS1" || k == "DNS2" {
 								continue
 							}
@@ -1050,12 +1050,13 @@ func (s *KecService) removeKecInstance(d *schema.ResourceData, meta interface{})
 
 func (s *KecService) checkKecInstanceState(d *schema.ResourceData, instanceId string, target []string, timeout time.Duration) (err error) {
 	stateConf := &resource.StateChangeConf{
-		Pending:    []string{},
-		Target:     target,
-		Refresh:    s.kecInstanceStateRefreshFunc(d, instanceId, []string{"error"}),
-		Timeout:    timeout,
-		Delay:      5 * time.Second,
-		MinTimeout: 1 * time.Second,
+		Pending:      []string{},
+		Target:       target,
+		Refresh:      s.kecInstanceStateRefreshFunc(d, instanceId, []string{"error"}),
+		Timeout:      timeout,
+		PollInterval: 5 * time.Second,
+		Delay:        10 * time.Second,
+		MinTimeout:   1 * time.Second,
 	}
 	_, err = stateConf.WaitForState()
 	return err
