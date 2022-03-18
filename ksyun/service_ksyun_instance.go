@@ -408,6 +408,10 @@ func (s *KecService) modifyKecInstance(d *schema.ResourceData, resource *schema.
 	//	callbacks = append(callbacks, startCall)
 	//}
 
+	// 2022-03-17 [更配重启问题记录] by ydx
+	// 先stop再start，有时候stop执行后机器没有关闭（默认不使用强制重启，避免客户在不知情的情况下影响服务）；
+	// 如果卡在stop，用户使用其他方式重启了机器，stop就会一直retry
+	// 这里改用reboot，然后等待active，如果没有成功，用户从控制台重启后也会变成active状态，retry到此状态就可以正常退出了
 	if specCall.executeCall != nil || hostNameCall.executeCall != nil {
 		rebootCall, err := s.rebootKecInstance(d)
 		if err != nil {
@@ -1050,7 +1054,7 @@ func (s *KecService) checkKecInstanceState(d *schema.ResourceData, instanceId st
 		Target:     target,
 		Refresh:    s.kecInstanceStateRefreshFunc(d, instanceId, []string{"error"}),
 		Timeout:    timeout,
-		Delay:      10 * time.Second,
+		Delay:      5 * time.Second,
 		MinTimeout: 1 * time.Second,
 	}
 	_, err = stateConf.WaitForState()
