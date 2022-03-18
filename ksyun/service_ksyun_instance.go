@@ -59,7 +59,7 @@ func (s *KecService) readAndSetKecInstance(d *schema.ResourceData, r *schema.Res
 						if err != nil {
 							return resource.NonRetryableError(err)
 						}
-						for k, _ := range networkInterface {
+						for k := range networkInterface {
 							if k == "DNS1" || k == "DNS2" {
 								continue
 							}
@@ -395,17 +395,29 @@ func (s *KecService) modifyKecInstance(d *schema.ResourceData, resource *schema.
 	}
 	callbacks = append(callbacks, hostNameCall)
 
+	//if hostNameCall.executeCall != nil {
+	//	stopCall, err := s.stopKecInstance(d)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	callbacks = append(callbacks, stopCall)
+	//	startCall, err := s.startKecInstance(d)
+	//	if err != nil {
+	//		return err
+	//	}
+	//	callbacks = append(callbacks, startCall)
+	//}
+
+	// 2022-03-17 [更配重启问题记录] by ydx
+	// 先stop再start，有时候stop执行后机器没有关闭（默认不使用强制重启，避免客户在不知情的情况下影响服务）；
+	// 如果卡在stop，用户使用其他方式重启了机器，stop就会一直retry
+	// 这里改用reboot，然后等待active，如果没有成功，用户从控制台重启后也会变成active状态，retry到此状态就可以正常退出了
 	if specCall.executeCall != nil || hostNameCall.executeCall != nil {
-		stopCall, err := s.stopKecInstance(d)
+		rebootCall, err := s.rebootKecInstance(d)
 		if err != nil {
 			return err
 		}
-		callbacks = append(callbacks, stopCall)
-		startCall, err := s.startKecInstance(d)
-		if err != nil {
-			return err
-		}
-		callbacks = append(callbacks, startCall)
+		callbacks = append(callbacks, rebootCall)
 	}
 	return ksyunApiCallNew(callbacks, d, s.client, true)
 }
@@ -504,7 +516,7 @@ func (s *KecService) modifyKecInstanceType(d *schema.ResourceData, resource *sch
 			},
 			afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
 				logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
-				err = s.checkKecInstanceState(d, "", []string{"resize_success_local", "migrating_success_off_line"}, d.Timeout(schema.TimeoutUpdate))
+				err = s.checkKecInstanceState(d, "", []string{"resize_success_local", "migrating_success", "migrating_success_off_line"}, d.Timeout(schema.TimeoutUpdate))
 				if err != nil {
 					return err
 				}
@@ -889,6 +901,47 @@ func (s *KecService) stopOrStartKecInstance(d *schema.ResourceData) (callback Ap
 	return callback, err
 }
 
+func (s *KecService) rebootKecInstance(d *schema.ResourceData) (callback ApiCall, err error) {
+	updateReq := map[string]interface{}{
+		"InstanceId.1": d.Id(),
+	}
+	callback = ApiCall{
+		param:  &updateReq,
+		action: "RebootInstances",
+		beforeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (doExecute bool, err error) {
+			data, err := s.readKecInstance(d, "", false)
+			if err != nil {
+				return doExecute, err
+			}
+			status, err := getSdkValue("InstanceState.Name", data)
+			if err != nil {
+				return doExecute, err
+			}
+			if status.(string) == "stopped" {
+				doExecute = false
+			} else {
+				doExecute = true
+			}
+			return doExecute, err
+		},
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			conn := client.kecconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.RebootInstances(call.param)
+			return resp, err
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
+			err = s.checkKecInstanceState(d, "", []string{"active"}, d.Timeout(schema.TimeoutUpdate))
+			if err != nil {
+				return err
+			}
+			return err
+		},
+	}
+	return callback, err
+}
+
 func (s *KecService) stopKecInstance(d *schema.ResourceData) (callback ApiCall, err error) {
 	updateReq := map[string]interface{}{
 		"InstanceId.1": d.Id(),
@@ -997,12 +1050,13 @@ func (s *KecService) removeKecInstance(d *schema.ResourceData, meta interface{})
 
 func (s *KecService) checkKecInstanceState(d *schema.ResourceData, instanceId string, target []string, timeout time.Duration) (err error) {
 	stateConf := &resource.StateChangeConf{
-		Pending:    []string{},
-		Target:     target,
-		Refresh:    s.kecInstanceStateRefreshFunc(d, instanceId, []string{"error"}),
-		Timeout:    timeout,
-		Delay:      10 * time.Second,
-		MinTimeout: 1 * time.Second,
+		Pending:      []string{},
+		Target:       target,
+		Refresh:      s.kecInstanceStateRefreshFunc(d, instanceId, []string{"error"}),
+		Timeout:      timeout,
+		PollInterval: 5 * time.Second,
+		Delay:        10 * time.Second,
+		MinTimeout:   1 * time.Second,
 	}
 	_, err = stateConf.WaitForState()
 	return err
