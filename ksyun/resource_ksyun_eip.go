@@ -44,6 +44,7 @@ func resourceKsyunEip() *schema.Resource {
 					"HourlySettlement",
 					"PostPaidByHour",
 					"HourlyInstantSettlement",
+					"PostpaidByTime",
 				}, false),
 				DiffSuppressFunc: chargeSchemaDiffSuppressFunc,
 			},
