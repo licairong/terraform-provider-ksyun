@@ -325,7 +325,9 @@ func modifyRedisInstanceSpec(d *schema.ResourceData, meta interface{}) error {
 	)
 
 	transform := map[string]SdkReqTransform{
-		"capacity": {},
+		"capacity":   {},
+		"shard_size": {},
+		"shard_num":  {},
 	}
 	req, err = SdkRequestAutoMapping(d, resourceRedisInstance(), true, transform, nil)
 	if err != nil {
@@ -448,6 +450,56 @@ func modifyRedisInstanceSg(d *schema.ResourceData, meta interface{}, isUpdate bo
 			logger.Debug(logger.RespFormat, action, addReq, *resp)
 		}
 
+	}
+	return err
+}
+
+func modifyRedisInstanceAutoBackup(d *schema.ResourceData, meta interface{}) error {
+	var (
+		err  error
+		req  map[string]interface{}
+		resp *map[string]interface{}
+	)
+
+	transform := map[string]SdkReqTransform{
+		"timing_switch": {},
+		"timezone":      {},
+	}
+	req, err = SdkRequestAutoMapping(d, resourceRedisInstance(), true, transform, nil)
+	if err != nil {
+		return fmt.Errorf("error on updating instance , error is %s", err)
+	}
+	if req["Timezone"] != nil {
+		if ts, ok := d.GetOk("timing_switch"); ok {
+			req["TimingSwitch"] = ts
+		} else {
+			return fmt.Errorf("error on updating instance, error is %s", err)
+		}
+	}
+
+	if len(req) > 0 {
+		req["CacheId"] = d.Id()
+		integrationAzConf := &IntegrationRedisAzConf{
+			resourceData: d,
+			client:       meta.(*KsyunClient),
+			req:          &req,
+			field:        "available_zone",
+			requestFunc: func() (*map[string]interface{}, error) {
+				conn := meta.(*KsyunClient).kcsv1conn
+				return conn.SetTimingSnapshot(&req)
+			},
+		}
+		action := "SetTimingSnapshot"
+		logger.Debug(logger.ReqFormat, action, req)
+		resp, err = integrationAzConf.integrationRedisAz()
+		if err != nil {
+			return fmt.Errorf("error on SetTimingSnapshot instance %q, %s", d.Id(), err)
+		}
+		logger.Debug(logger.RespFormat, action, req, *resp)
+		err = checkRedisInstanceStatus(d, meta, d.Timeout(schema.TimeoutUpdate), "")
+		if err != nil {
+			return fmt.Errorf("error on SetTimingSnapshot instance %q, %s", d.Id(), err)
+		}
 	}
 	return err
 }
