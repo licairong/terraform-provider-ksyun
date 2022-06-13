@@ -10,55 +10,55 @@ import (
 )
 
 func TestAccKcs_basic(t *testing.T) {
-	//resource.Test(t, resource.TestCase{
-	//	PreCheck: func() {
-	//		testAccPreCheck(t)
-	//	},
-	//	IDRefreshName: "ksyun_redis_instance.default",
-	//	Providers:    testAccProviders,
-	//	CheckDestroy: testAccCheckKcsDestroy,
-	//	Steps: []resource.TestStep{
-	//		// 集群创建
-	//		{
-	//			Config: testAccKcsConfig,
-	//			Check: resource.ComposeTestCheckFunc(
-	//				testAccCheckKcsInstanceExists("ksyun_redis_instance.default"),
-	//			),
-	//		},
-	//		// 集群更配
-	//		{
-	//			Config: testUpdateAccKcsConfig,
-	//			Check: resource.ComposeTestCheckFunc(
-	//				testAccCheckKcsInstanceExists("ksyun_redis_instance.default"),
-	//			),
-	//		},
-	//	},
-	//})
-
 	resource.Test(t, resource.TestCase{
 		PreCheck: func() {
 			testAccPreCheck(t)
 		},
-		IDRefreshName: "ksyun_redis_instance.single",
+		IDRefreshName: "ksyun_redis_instance.default",
 		Providers:     testAccProviders,
 		CheckDestroy:  testAccCheckKcsDestroy,
 		Steps: []resource.TestStep{
-			// 主从创建
+			// 集群创建
 			{
-				Config: testAccKcsSingleConfig,
+				Config: testAccKcsConfig1,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckKcsInstanceExists("ksyun_redis_instance.single"),
+					testAccCheckKcsInstanceExists("ksyun_redis_instance.default"),
 				),
 			},
-			// 主从更配
+			// 集群更配
 			{
-				Config: testAccKcsSingleUpdateConfig,
+				Config: testUpdateAccKcsConfig1,
 				Check: resource.ComposeTestCheckFunc(
-					testAccCheckKcsInstanceExists("ksyun_redis_instance.single"),
+					testAccCheckKcsInstanceExists("ksyun_redis_instance.default"),
 				),
 			},
 		},
 	})
+
+	//resource.Test(t, resource.TestCase{
+	//	PreCheck: func() {
+	//		testAccPreCheck(t)
+	//	},
+	//	IDRefreshName: "ksyun_redis_instance.single",
+	//	Providers:     testAccProviders,
+	//	CheckDestroy:  testAccCheckKcsDestroy,
+	//	Steps: []resource.TestStep{
+	//		// 主从创建
+	//		{
+	//			Config: testAccKcsSingleConfig,
+	//			Check: resource.ComposeTestCheckFunc(
+	//				testAccCheckKcsInstanceExists("ksyun_redis_instance.single"),
+	//			),
+	//		},
+	//		// 主从更配
+	//		{
+	//			Config: testAccKcsSingleUpdateConfig,
+	//			Check: resource.ComposeTestCheckFunc(
+	//				testAccCheckKcsInstanceExists("ksyun_redis_instance.single"),
+	//			),
+	//		},
+	//	},
+	//})
 }
 
 func testAccCheckKcsInstanceExists(n string) resource.TestCheckFunc {
@@ -200,6 +200,7 @@ resource "ksyun_tag" "test_tag" {
     resource_id = "${ksyun_redis_instance.default.id}"
 }
 `
+
 const testAccKcsSingleConfig = `
 variable "protocol" {
   default = "4.0"
@@ -295,5 +296,78 @@ resource "ksyun_tag" "test_tag" {
     value = "exist_tag_value3"
     resource_type = "kcs-instance"
     resource_id = "${ksyun_redis_instance.single.id}"
+}
+`
+
+const testAccKcsConfig1 = `
+variable "protocol" {
+  default = "6.0"
+}
+
+resource "ksyun_redis_instance" "default" {
+  name                  = "zhaozhihuaCluster"
+  mode                  = 3
+  capacity              = 6
+  net_type              = 2
+  security_group_id     = "ea2f6f56-d574-42f1-914e-4a451ba52b57"
+  vnet_id 				= "b6a38f5a-804d-4a12-ab60-fa3e9681b3ae"
+  vpc_id 				= "8c8a161f-bc75-46ea-8215-8db972a6cb51"
+  bill_type             = 5
+  duration              = ""
+  pass_word             = "Zhaozhihua123"
+  iam_project_id        = "103800"
+  slave_num             = 0
+  protocol              = "5.0"
+  reset_all_parameters  = false
+  timing_switch         = "Off"
+  timezone              = ""
+  shard_size            = 2
+  shard_num             = 3
+  parameters = {
+    "timeout"           = "600",
+  }
+}
+
+resource "ksyun_tag" "test_tag" {
+    key = "exist_tag"
+    value = "exist_tag_value1"
+    resource_type = "kcs-instance"
+    resource_id = "${ksyun_redis_instance.default.id}"
+}
+`
+const testUpdateAccKcsConfig1 = `
+variable "protocol" {
+  default = "6.0"
+}
+
+resource "ksyun_redis_instance" "default" {
+  name                  = "zhaozhihuaCluster"
+  mode                  = 3
+  capacity              = 12
+  net_type              = 2
+  security_group_id     = "ea2f6f56-d574-42f1-914e-4a451ba52b57"
+  vnet_id 				= "b6a38f5a-804d-4a12-ab60-fa3e9681b3ae"
+  vpc_id 				= "8c8a161f-bc75-46ea-8215-8db972a6cb51"
+  bill_type             = 5
+  duration              = ""
+  pass_word             = "Zhaozhihua123"
+  iam_project_id        = "103800"
+  slave_num             = 0
+  protocol              = "5.0"
+  reset_all_parameters  = false
+  timing_switch         = "Off"
+  timezone              = ""
+  shard_size            = 4
+  shard_num             = 3
+  parameters = {
+    "timeout"           = "600",
+  }
+}
+
+resource "ksyun_tag" "test_tag" {
+    key = "exist_tag"
+    value = "exist_tag_value1"
+    resource_type = "kcs-instance"
+    resource_id = "${ksyun_redis_instance.default.id}"
 }
 `

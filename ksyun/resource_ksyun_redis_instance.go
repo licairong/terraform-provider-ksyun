@@ -101,10 +101,9 @@ func resourceRedisInstance() *schema.Resource {
 				Optional: true,
 				ForceNew: true,
 				ValidateFunc: validation.StringInSlice([]string{
-					"2.8",
-					"3.0",
 					"4.0",
 					"5.0",
+					"6.0",
 				}, false),
 			},
 			"backup_time_zone": {
@@ -346,6 +345,7 @@ func resourceRedisInstanceCreate(d *schema.ResourceData, meta interface{}) error
 func resourceRedisInstanceDelete(d *schema.ResourceData, meta interface{}) error {
 	deleteReq := make(map[string]interface{})
 	deleteReq["CacheId"] = d.Id()
+	deleteReq["AvailableZone"] = d.Get("az")
 
 	return resource.Retry(20*time.Minute, func() *resource.RetryError {
 		var (

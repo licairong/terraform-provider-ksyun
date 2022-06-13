@@ -522,6 +522,17 @@ func resourceRedisInstanceParameterCheckAndPrepare(d *schema.ResourceData, meta 
 		}
 	}
 
+	if mode, ok := d.GetOk("mode"); ok {
+		if mode == 3 {
+			if slave_num, ok := d.GetOk("slave_num"); ok {
+				a := slave_num.(int)
+				if a > 0 {
+					return nil, fmt.Errorf("redis SelfDefineCluster do not support slave. when mode is 3, then slave_num must equal 0 ")
+				}
+			}
+		}
+	}
+
 	//reset_all_parameters and parameters Conflict
 	if r, ok := d.GetOk("reset_all_parameters"); ok && !isUpdate && r.(bool) && len(parameters) > 0 {
 		err = fmt.Errorf("parameters is not empty,can not set reset_all_parameters true")
