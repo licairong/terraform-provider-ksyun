@@ -454,7 +454,7 @@ func resourceRedisInstanceRead(d *schema.ResourceData, meta interface{}) error {
 	add := make(map[string]interface{})
 	for k, v := range item {
 		if k == "az" {
-			add["AvailableZone"] = v
+			add["availableZone"] = v
 		}
 	}
 	if _, ok = item["slaveNum"]; !ok {

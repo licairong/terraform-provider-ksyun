@@ -191,7 +191,9 @@ func resourceRedisInstanceSgRead(d *schema.ResourceData, meta interface{}) error
 				}
 			}
 		}
-		err = d.Set("security_group_id", sgIds[0:len(sgIds)-1])
+		if len(sgIds) > 0 {
+			err = d.Set("security_group_id", sgIds[0:len(sgIds)-1])
+		}
 		if err != nil {
 			return err
 		}

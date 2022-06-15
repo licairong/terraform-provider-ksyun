@@ -49,6 +49,9 @@ func (conf *IntegrationRedisAzConf) integrationRedisAz() (*map[string]interface{
 	//		continue
 	//	}
 	//}
+	if v, ok := conf.resourceData.GetOk(conf.field); ok {
+		(*conf.req)[Downline2Hump(conf.field)] = v
+	}
 	resp, _ = conf.requestFunc()
 	if err == nil && (conf.existFn == nil || (conf.existFn != nil && conf.existFn(resp))) {
 		_ = conf.resourceData.Set(conf.field, (*conf.req)["AvailableZone"])

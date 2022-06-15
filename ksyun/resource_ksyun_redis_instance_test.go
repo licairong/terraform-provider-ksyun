@@ -20,14 +20,14 @@ func TestAccKcs_basic(t *testing.T) {
 		Steps: []resource.TestStep{
 			// 集群创建
 			{
-				Config: testAccKcsConfig1,
+				Config: testAccKcsConfig,
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckKcsInstanceExists("ksyun_redis_instance.default"),
 				),
 			},
 			// 集群更配
 			{
-				Config: testUpdateAccKcsConfig1,
+				Config: testUpdateAccKcsConfig,
 				Check: resource.ComposeTestCheckFunc(
 					testAccCheckKcsInstanceExists("ksyun_redis_instance.default"),
 				),
@@ -112,13 +112,14 @@ variable "protocol" {
 }
 
 resource "ksyun_redis_instance" "default" {
-  name                  = "TerraformRedisInstanceTest"
+  available_zone        = "eu-east-1b"
+  name                  = "HoubinTerraformTest"
   mode                  = 3
   capacity              = 6
   net_type              = 2
   security_group_id     = "20b7a66e-c2c5-4ccc-a260-b92ce8992adc"
-  vnet_id 				= "74274e94-5e3e-4146-b962-92c0a59bb4e7"
-  vpc_id 				= "c7d1a637-657d-4250-9c3d-d2426cc24de2"
+  vnet_id 				= "b6a38f5a-804d-4a12-ab60-fa3e9681b3ae"
+  vpc_id 				= "8c8a161f-bc75-46ea-8215-8db972a6cb51"
   bill_type             = 5
   duration              = ""
   pass_word             = "Shiwo1101"
@@ -159,13 +160,14 @@ variable "protocol" {
 }
 
 resource "ksyun_redis_instance" "default" {
-  name                  = "TerraformRedisInstanceTest"
+  available_zone        = "eu-east-1b"
+  name                  = "HoubinTerraformTest"
   mode                  = 3
   capacity              = 10
   net_type              = 2
   security_group_id     = "20b7a66e-c2c5-4ccc-a260-b92ce8992adc"
-  vnet_id 				= "74274e94-5e3e-4146-b962-92c0a59bb4e7"
-  vpc_id 				= "c7d1a637-657d-4250-9c3d-d2426cc24de2"
+  vnet_id 				= "b6a38f5a-804d-4a12-ab60-fa3e9681b3ae"
+  vpc_id 				= "8c8a161f-bc75-46ea-8215-8db972a6cb51"
   bill_type             = 5
   duration              = ""
   pass_word             = "wwsNewPwd123"
@@ -296,78 +298,5 @@ resource "ksyun_tag" "test_tag" {
     value = "exist_tag_value3"
     resource_type = "kcs-instance"
     resource_id = "${ksyun_redis_instance.single.id}"
-}
-`
-
-const testAccKcsConfig1 = `
-variable "protocol" {
-  default = "6.0"
-}
-
-resource "ksyun_redis_instance" "default" {
-  name                  = "zhaozhihuaCluster"
-  mode                  = 3
-  capacity              = 6
-  net_type              = 2
-  security_group_id     = "ea2f6f56-d574-42f1-914e-4a451ba52b57"
-  vnet_id 				= "b6a38f5a-804d-4a12-ab60-fa3e9681b3ae"
-  vpc_id 				= "8c8a161f-bc75-46ea-8215-8db972a6cb51"
-  bill_type             = 5
-  duration              = ""
-  pass_word             = "Zhaozhihua123"
-  iam_project_id        = "103800"
-  slave_num             = 0
-  protocol              = "5.0"
-  reset_all_parameters  = false
-  timing_switch         = "Off"
-  timezone              = ""
-  shard_size            = 2
-  shard_num             = 3
-  parameters = {
-    "timeout"           = "600",
-  }
-}
-
-resource "ksyun_tag" "test_tag" {
-    key = "exist_tag"
-    value = "exist_tag_value1"
-    resource_type = "kcs-instance"
-    resource_id = "${ksyun_redis_instance.default.id}"
-}
-`
-const testUpdateAccKcsConfig1 = `
-variable "protocol" {
-  default = "6.0"
-}
-
-resource "ksyun_redis_instance" "default" {
-  name                  = "zhaozhihuaCluster"
-  mode                  = 3
-  capacity              = 12
-  net_type              = 2
-  security_group_id     = "ea2f6f56-d574-42f1-914e-4a451ba52b57"
-  vnet_id 				= "b6a38f5a-804d-4a12-ab60-fa3e9681b3ae"
-  vpc_id 				= "8c8a161f-bc75-46ea-8215-8db972a6cb51"
-  bill_type             = 5
-  duration              = ""
-  pass_word             = "Zhaozhihua123"
-  iam_project_id        = "103800"
-  slave_num             = 0
-  protocol              = "5.0"
-  reset_all_parameters  = false
-  timing_switch         = "Off"
-  timezone              = ""
-  shard_size            = 4
-  shard_num             = 3
-  parameters = {
-    "timeout"           = "600",
-  }
-}
-
-resource "ksyun_tag" "test_tag" {
-    key = "exist_tag"
-    value = "exist_tag_value1"
-    resource_type = "kcs-instance"
-    resource_id = "${ksyun_redis_instance.default.id}"
 }
 `
