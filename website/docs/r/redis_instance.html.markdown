@@ -61,7 +61,7 @@ resource "ksyun_redis_instance" "default" {
   name                  = "MyRedisInstance1101"
   mode                  = 2
   capacity              = 1
-  slaveNum              = 2  
+  slave_num              = 2  
   net_type              = 2
   vnet_id               = "${ksyun_subnet.default.id}"
   vpc_id                = "${ksyun_vpc.default.id}"
@@ -103,8 +103,8 @@ The following arguments are supported:
 * `name ` - (Optional) The name of DB instance.
 * `mode ` - (Optional) The KVStore instance system architecture required by the user. Valid values:  1(cluster),2(single),3(SelfDefineCluster).
 * `security_group_id` - (Require) The id of security group;
-* `capacity ` - (Require) The instance capacity required by the user. If mode is 3 the value is ({shard_size} * {shard_num}). Valid values :{1, 2, 4, 8, 16, 20, 24, 28, 32, 64}.
-* `slaveNum ` - (Optional) The readonly node num required by the user. Valid values ：{0-7}
+* `capacity ` - (Require) The instance capacity required by the user. Valid values :{1, 2, 4, 8, 16,20,24,28, 32, 64}.
+* `slave_num ` - (Optional) The readonly node num required by the user. Valid values ：{0-7}
 * `net_type ` - (Require) The network type. Valid values ：2(vpc).
 * `vpc_id` - (Require)   Used to retrieve instances belong to specified VPC .
 * `vnet_id` - (Require) The ID of subnet. the instance will use the subnet in the current region.
