@@ -78,7 +78,20 @@ $  go test -test.run TestAccKsyunEip_basic -v
 该介绍包括三部分：
 ##### terraform-provider-ksyun开发
 
-_各产品线开发人员参考。_
+本地开发调试方法
+
+针对terraform v0.12版本：
+
+1、在项目根目录下执行 `make dev_v0.12`，会编译provider到$HOME/.terraform.d/plugins
+
+2、到tf文件所在目录执行`terraform init`会获 取到 该本地版本的provider
+
+针对terraform v0.13及以上版本：
+
+1、在项目根目录下执行 `make dev version=1.3.4`，会编译provider到$HOME/.terraform.d/plugin-cache（**注意**:调命令的时候需要给编译的provider传入一个x.y.z的版本号，以便terraform可以加载到该文件）
+
+2、 到tf文件所在目录执行`terraform init --plugin-dir ~/.terraform.d/plugin-cache/`会获取到本地版本的provider(**注意**:高版本的terraform需要指定provider所在路径，这里通过参数形式指定，其他指定方式可以参考官方开发文档：https://www.terraform.io/cli/config/config-file)
+
 
 ##### terraform-provider-ksyun使用
 
