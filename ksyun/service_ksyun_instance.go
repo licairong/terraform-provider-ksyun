@@ -731,11 +731,14 @@ func (s *KecService) modifyKecInstanceNetwork(d *schema.ResourceData, resource *
 	if err != nil {
 		return callback, err
 	}
+
 	_, updateSubnet := updateReq["SubnetId"]
 	_, updateIp := updateReq["PrivateAddress"]
 	_, updateDns1 := updateReq["DNS1"]
 	_, updateDns2 := updateReq["DNS2"]
-	if updateSubnet || updateIp || updateDns1 || updateDns2 {
+	// 判断是否更新安全组
+	_, updateSg := updateReq["SecurityGroupId.1"]
+	if updateSubnet || updateIp || updateDns1 || updateDns2 || updateSg {
 		return s.updateKecInstanceNetwork(updateReq, resource, false)
 	}
 	return callback, err
