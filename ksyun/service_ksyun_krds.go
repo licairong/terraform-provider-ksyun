@@ -561,13 +561,15 @@ func removeKrdsParameterGroup(d *schema.ResourceData, meta interface{}) (err err
 			delParam := make(map[string]interface{})
 			delParam["DBParameterGroupId"] = d.Get("db_parameter_group_id").(string)
 			_, deleteErr := conn.DeleteDBParameterGroup(&delParam)
-			if deleteErr == nil || notFoundErrorNew(deleteErr) {
+			logger.Debug("test %s %s %s", "DeleteDBParameterGroup", inUseError(deleteErr), deleteErr)
+			if deleteErr == nil || notFoundErrorNew(deleteErr) || inUseError(deleteErr) {
 				return nil
 			} else {
 				return resource.RetryableError(deleteErr)
 			}
 		}
-		return resource.RetryableError(nil)
+		// 没有参数组，不执行删除
+		return nil //resource.RetryableError(nil)
 	})
 }
 
@@ -674,7 +676,7 @@ func validDbInstanceClass() schema.SchemaValidateFunc {
 			errors = append(errors, fmt.Errorf("db_instance_class format error"))
 		}
 		regMem, _ := regexp.Compile("^db\\.ram\\.[1-9]\\d?$")
-		regDisk, _ := regexp.Compile("^db\\.disk\\.[1-9]\\d?$")
+		regDisk, _ := regexp.Compile("^db\\.disk\\.[1-9]\\d{1,2}$")
 
 		if !regMem.MatchString(config[0]) {
 			errors = append(errors, fmt.Errorf("db_instance_class format db.ram error"))
