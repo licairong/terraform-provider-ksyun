@@ -561,7 +561,7 @@ func removeKrdsParameterGroup(d *schema.ResourceData, meta interface{}) (err err
 			delParam := make(map[string]interface{})
 			delParam["DBParameterGroupId"] = d.Get("db_parameter_group_id").(string)
 			_, deleteErr := conn.DeleteDBParameterGroup(&delParam)
-			logger.Debug("test %s %s %s", "DeleteDBParameterGroup", inUseError(deleteErr), deleteErr)
+			//logger.Debug("test %s %s %s", "DeleteDBParameterGroup", inUseError(deleteErr), deleteErr)
 			if deleteErr == nil || notFoundErrorNew(deleteErr) || inUseError(deleteErr) {
 				return nil
 			} else {
