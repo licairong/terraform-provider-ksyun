@@ -194,6 +194,12 @@ func resourceKsyunInstance() *schema.Resource {
 				Optional: true,
 				Computed: true,
 			},
+			// eip和主机的绑定关系，放在绑定的resource里描述，不在vm的结构里提供这个字段
+			// 否则后绑定，资源创建完成时这个字段为空
+			//"public_ip": {
+			//	Type:     schema.TypeString,
+			//	Computed: true,
+			//},
 			"instance_name": {
 				Type:     schema.TypeString,
 				Optional: true,
