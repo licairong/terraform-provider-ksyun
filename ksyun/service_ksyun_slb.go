@@ -41,6 +41,11 @@ func (s *SlbService) ReadLoadBalancers(condition map[string]interface{}) (data [
 		return data, err
 	}
 	data = results.([]interface{})
+
+	// merge attrs
+	//describeLoadBalancerAttributes
+	s.describeLoadBalancersAttributes(data)
+
 	return data, err
 }
 
@@ -71,6 +76,78 @@ func (s *SlbService) ReadLoadBalancer(d *schema.ResourceData, loadBalancerId str
 	return data, err
 }
 
+// 读取attributes，增加日志配置字段
+func (s *SlbService) describeLoadBalancersAttributes(lbs []interface{}) {
+
+	apiNotSuppotRegion := false
+	for _, lb := range lbs {
+		lbItem := lb.(map[string]interface{})
+
+		// 当前region如果已经报过错，不再查接口，直接给日志设为false
+		if apiNotSuppotRegion {
+			lbItem["AccessLogsEnabled"] = false
+			lbItem["AccessLogsS3Bucket"] = nil
+			continue
+		}
+		err := s.describeLoadBalancerAttributes(&lbItem)
+
+		// 不支持的region给日志设为false
+		if err != nil && strings.Contains(err.Error(), "ApiNotSupportRegion") {
+			apiNotSuppotRegion = true
+			lbItem["AccessLogsEnabled"] = false
+			lbItem["AccessLogsS3Bucket"] = nil //"ApiNotSupportRegion"
+		}
+	}
+
+}
+
+// 读取单个lb的attributes
+func (s *SlbService) describeLoadBalancerAttributes(lb *map[string]interface{}) (err error) {
+	defer func() {
+		e := recover()
+		logger.Debug("recover err: %s %s", "describeLoadBalancerAttributes", e)
+	}()
+	conn := s.client.slbconn
+
+	params := map[string]interface{}{
+		"LoadBalancerId": (*lb)["LoadBalancerId"],
+	}
+	logger.Debug("%s, %s", "describeLoadBalancerAttributes", params)
+	var resp *map[string]interface{}
+	resp, err = conn.DescribeLoadBalancerAttributes(&params)
+	logger.Debug("%s, %s %s", "describeLoadBalancerAttributes resp", resp, err)
+
+	if err != nil {
+		return err
+	}
+
+	if v, ok := (*resp)["LoadBalancerAttributeSet"]; ok {
+		attributes := v.([]interface{})
+		logger.Debug("%s, %s", "describeLoadBalancerAttributes ok", attributes)
+		for _, attr := range attributes {
+
+			item := attr.(map[string]interface{})
+
+			logger.Debug("%s, %s", "describeLoadBalancerAttributes k:v", attr)
+			if item["Key"].(string) == "access_logs.s3.enabled" {
+				if item["Value"].(string) == "false" {
+					(*lb)["AccessLogsEnabled"] = false
+				}
+				if item["Value"].(string) == "true" {
+					(*lb)["AccessLogsEnabled"] = true
+				}
+			}
+			if item["Key"].(string) == "access_logs.s3.bucket" {
+				//d.Set("log_bucket", item["Value"])
+				(*lb)["AccessLogsS3Bucket"] = item["Value"]
+			}
+		}
+	} else {
+		logger.Debug("%s, %s", "describeLoadBalancerAttributes not ok", "")
+	}
+	return
+}
+
 func (s *SlbService) ReadAndSetLoadBalancer(d *schema.ResourceData, r *schema.Resource) (err error) {
 	return resource.Retry(5*time.Minute, func() *resource.RetryError {
 		data, callErr := s.ReadLoadBalancer(d, "")
@@ -88,6 +165,7 @@ func (s *SlbService) ReadAndSetLoadBalancer(d *schema.ResourceData, r *schema.Re
 			if err != nil {
 				return resource.NonRetryableError(err)
 			}
+
 			extra := map[string]SdkResponseMapping{
 				"ProjectId": {
 					Field: "project_id",
@@ -198,8 +276,10 @@ func (s *SlbService) CreateLoadBalancer(d *schema.ResourceData, r *schema.Resour
 
 func (s *SlbService) ModifyLoadBalancerCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
 	transform := map[string]SdkReqTransform{
-		"project_id": {Ignore: true},
-		"tags":       {Ignore: true},
+		"project_id":            {Ignore: true},
+		"tags":                  {Ignore: true},
+		"access_logs_enabled":   {Ignore: true},
+		"access_logs_s3_bucket": {Ignore: true},
 	}
 	req, err := SdkRequestAutoMapping(d, r, true, transform, nil, SdkReqParameter{
 		onlyTransform: false,
@@ -249,6 +329,40 @@ func (s *SlbService) ModifyLoadBalancerProjectCall(d *schema.ResourceData, resou
 	return callback, err
 }
 
+func (s *SlbService) modifyLoadBalancerAttributesCall(d *schema.ResourceData, resource *schema.Resource, isUpdate bool) (callback ApiCall, err error) {
+	if isUpdate && !d.HasChange("access_logs_enabled") && !d.HasChange("access_logs_s3_bucket") {
+		return callback, err
+	}
+
+	// todo:
+	// 校验：
+	// - 是否是public
+	// - true的时候是否传了bucket
+
+	params := map[string]interface{}{
+		"LoadBalancerId":            d.Id(),
+		"Attributes.member.1.Key":   "access_logs.s3.enabled",
+		"Attributes.member.1.Value": d.Get("access_logs_enabled"),
+		"Attributes.member.2.Key":   "access_logs.s3.bucket",
+		"Attributes.member.2.Value": d.Get("access_logs_s3_bucket"),
+	}
+
+	callback = ApiCall{
+		param: &params,
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			_, err = client.slbconn.ModifyLoadBalancerAttributes(call.param)
+			//if err != nil && strings.Contains(err.Error(), "ApiNotSupportRegion") {
+			//	err = nil
+			//}
+			return resp, err
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			return err
+		},
+	}
+	return callback, err
+}
+
 func (s *SlbService) ModifyLoadBalancer(d *schema.ResourceData, r *schema.Resource) (err error) {
 	projectCall, err := s.ModifyLoadBalancerProjectCall(d, r)
 	if err != nil {
@@ -263,7 +377,13 @@ func (s *SlbService) ModifyLoadBalancer(d *schema.ResourceData, r *schema.Resour
 	if err != nil {
 		return err
 	}
-	return ksyunApiCallNew([]ApiCall{projectCall, call, tagCall}, d, s.client, true)
+
+	attributesCall, err := s.modifyLoadBalancerAttributesCall(d, r, true)
+	if err != nil {
+		return err
+	}
+
+	return ksyunApiCallNew([]ApiCall{projectCall, call, tagCall, attributesCall}, d, s.client, true)
 }
 
 func (s *SlbService) RemoveLoadBalancerCall(d *schema.ResourceData) (callback ApiCall, err error) {
