@@ -46,4 +46,6 @@ The attribute (`lbs`) support the following:
 * `vpc_id` - The ID of the VPC linked to the Load Balancers.
 * `subnet_id` - (Optional) The ID of subnet that intrant load balancer belongs to. 
 * `private_ip` - The IP address of intranet IP.
+* `access_logs_enabled` - (Optional) Default is `false`, Setting the value to `true` to enable the service.
+* `access_logs_s3_bucket` - (Optional) Bucket for storing access logs.
 
