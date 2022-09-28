@@ -271,7 +271,13 @@ func (s *SlbService) CreateLoadBalancer(d *schema.ResourceData, r *schema.Resour
 	if err != nil {
 		return err
 	}
-	return ksyunApiCallNew([]ApiCall{call, tagCall}, d, s.client, true)
+
+	attributesCall, err := s.modifyLoadBalancerAttributesCall(d, r, false)
+	if err != nil {
+		return err
+	}
+
+	return ksyunApiCallNew([]ApiCall{call, tagCall, attributesCall}, d, s.client, true)
 }
 
 func (s *SlbService) ModifyLoadBalancerCall(d *schema.ResourceData, r *schema.Resource) (callback ApiCall, err error) {
@@ -334,10 +340,9 @@ func (s *SlbService) modifyLoadBalancerAttributesCall(d *schema.ResourceData, re
 		return callback, err
 	}
 
-	// todo:
-	// 校验：
-	// - 是否是public
-	// - true的时候是否传了bucket
+	if !isUpdate && !d.Get("access_logs_enabled").(bool) {
+		return callback, err
+	}
 
 	params := map[string]interface{}{
 		"LoadBalancerId":            d.Id(),
@@ -350,10 +355,11 @@ func (s *SlbService) modifyLoadBalancerAttributesCall(d *schema.ResourceData, re
 	callback = ApiCall{
 		param: &params,
 		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+			// 新建的资源，在这里才能拿到刚建好的实例信息，id在这里加到参数里
+			if !isUpdate && d.Id() != "" {
+				(*call.param)["LoadBalancerId"] = d.Id()
+			}
 			_, err = client.slbconn.ModifyLoadBalancerAttributes(call.param)
-			//if err != nil && strings.Contains(err.Error(), "ApiNotSupportRegion") {
-			//	err = nil
-			//}
 			return resp, err
 		},
 		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
