@@ -28,8 +28,8 @@ resource "ksyun_lb" "default" {
   ## 部分不支持此功能的region也会报错
 
   ## 日志开关，true为开启日志功能，默认为false
-  log_enabled = false
+  access_logs_enabled = false
 
   ## 存放日志的ks3 bucket地址
-  log_bucket = "xxx.ks3-cn-beijing.ksyuncs.com"
+  access_logs_s3_bucket = "xxx.ks3-cn-beijing.ksyuncs.com"
 }
