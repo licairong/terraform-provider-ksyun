@@ -30,6 +30,6 @@ resource "ksyun_lb" "default" {
   ## 日志开关，true为开启日志功能，默认为false （非必填）
   access_logs_enabled = false
 
-  ## 存放日志的ks3 bucket地址 （access_logs_enabled为true时必填）
+  ## 存放日志的ks3 bucket地址
   access_logs_s3_bucket = "xxx.ks3-cn-beijing.ksyuncs.com"
 }
