@@ -103,6 +103,16 @@ func resourceKsyunLb() *schema.Resource {
 				Type:     schema.TypeBool,
 				Computed: true,
 			},
+			"access_logs_enabled": {
+				Type:     schema.TypeBool,
+				Optional: true,
+				Computed: true,
+			},
+			"access_logs_s3_bucket": {
+				Type:     schema.TypeString,
+				Optional: true,
+				Computed: true,
+			},
 		},
 	}
 }

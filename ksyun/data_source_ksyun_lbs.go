@@ -122,6 +122,14 @@ func dataSourceKsyunLbs() *schema.Resource {
 							Type:     schema.TypeString,
 							Computed: true,
 						},
+						"access_logs_enabled": {
+							Type:     schema.TypeBool,
+							Computed: true,
+						},
+						"access_logs_s3_bucket": {
+							Type:     schema.TypeString,
+							Computed: true,
+						},
 					},
 				},
 			},

@@ -30,7 +30,8 @@ The following arguments are supported:
 * `subnet_id` - (Optional, ForceNew) The id of the subnet.only Internal type is Required.
 * `load_balancer_state` - (Optional) The Load Balancers state.Valid Values:'start', 'stop'.
 * `private_ip_address` - (Optional) The internal Load Balancers can set an private ip address in Reserve Subnet .
-
+* `access_logs_enabled` - (Optional) Default is `false`, Setting the value to `true` to enable the service.
+* `access_logs_s3_bucket` - (Optional) Bucket for storing access logs.
 
 ## Attributes Reference
 
