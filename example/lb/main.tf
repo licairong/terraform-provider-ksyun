@@ -27,9 +27,9 @@ resource "ksyun_lb" "default" {
   ## 只有公网LB支持日志功能，私网LB开启此功能会报错
   ## 部分不支持此功能的region也会报错
 
-  ## 日志开关，true为开启日志功能，默认为false
+  ## 日志开关，true为开启日志功能，默认为false （非必填）
   access_logs_enabled = false
 
-  ## 存放日志的ks3 bucket地址
+  ## 存放日志的ks3 bucket地址 （access_logs_enabled为true时必填）
   access_logs_s3_bucket = "xxx.ks3-cn-beijing.ksyuncs.com"
 }
