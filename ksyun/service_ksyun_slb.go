@@ -161,7 +161,7 @@ func (s *SlbService) ReadAndSetLoadBalancer(d *schema.ResourceData, r *schema.Re
 				return resource.NonRetryableError(fmt.Errorf("error on  reading lb %q, %s", d.Id(), callErr))
 			}
 		} else {
-			err = mergeTagsData(d, &data, s.client, "slb")
+			err = mergeTagsData(d, &data, s.client, "loadbalancer")
 			if err != nil {
 				return resource.NonRetryableError(err)
 			}
@@ -267,7 +267,7 @@ func (s *SlbService) CreateLoadBalancer(d *schema.ResourceData, r *schema.Resour
 		return err
 	}
 	tagService := TagService{s.client}
-	tagCall, err := tagService.ReplaceResourcesTagsWithResourceCall(d, r, "slb", false, true)
+	tagCall, err := tagService.ReplaceResourcesTagsWithResourceCall(d, r, "loadbalancer", false, true)
 	if err != nil {
 		return err
 	}
@@ -379,7 +379,7 @@ func (s *SlbService) ModifyLoadBalancer(d *schema.ResourceData, r *schema.Resour
 		return err
 	}
 	tagService := TagService{s.client}
-	tagCall, err := tagService.ReplaceResourcesTagsWithResourceCall(d, r, "slb", true, false)
+	tagCall, err := tagService.ReplaceResourcesTagsWithResourceCall(d, r, "loadbalancer", true, false)
 	if err != nil {
 		return err
 	}
