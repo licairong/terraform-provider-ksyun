@@ -104,6 +104,7 @@ The following arguments are supported:
 * `data_disk` - (Optional) The list of data disks created with instance.
     - `type` - Data disk type. `SSD3.0`, The SSD cloud disk. `EHDD`, The EHDD cloud disk.
     - `size` - Data disk type size.
+    - `disk_snapshot_id` - When the cloud disk snapshot opens, the snapshot id is entered
     - `delete_with_instance` -  Delete this data disk when the instance is destroyed. It only works on SSD3.0, EHDD, disk.
 * `subnet_id` - (Required) The ID of subnet. the instance will use the subnet in the current region.
 * `security_group_id` - (Required) Security Group to associate with.
