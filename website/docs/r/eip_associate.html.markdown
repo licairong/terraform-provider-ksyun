@@ -35,3 +35,10 @@ The following arguments are supported:
 * `instance_id` - (Required) The id of the instance.
 * `network_interface_id` - (Optional) The id of the network interface.
 
+## Import
+
+EIP Association can be imported using the `id`, e.g.
+
+```
+$ terraform import ksyun_network_acl.default <allocation_id>:<instance_id>:<network_interface_id>
+```

@@ -64,5 +64,5 @@ In addition to all arguments above, the following attributes are exported:
 nat associate can be imported using the `id`, e.g.
 
 ```
-$ terraform import ksyun_nat_associate.example nat-associate-abc123456
+$ terraform import ksyun_nat_associate.example <nat_id>:<subnet_id>
 ```
