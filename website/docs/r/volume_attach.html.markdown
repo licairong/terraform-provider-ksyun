@@ -32,6 +32,7 @@ The following arguments are supported:
 
 In addition to all arguments above, the following attributes are exported:
 
+* `id` - The volume attachment ID and it formats as `<volume_id>:<instance_id>`
 * `volume_name` - The name of the EBS volume.
 * `volume_type` - The type of the EBS volume. Valid values:ESSD_PL1/ESSD_PL2/ESSD_PL3/SSD3.0/EHDD, default is `SSD3.0`
 * `volume_desc` - The description of the EBS volume.
