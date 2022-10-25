@@ -32,10 +32,15 @@ func resourceKsyunVolume() *schema.Resource {
 				Optional: true,
 				ForceNew: true,
 				ValidateFunc: validation.StringInSlice([]string{
-					"SSD2.0",
+					//"SSD2.0",
+					//"SSD3.0",
+					//"EHDD",
+					//"SATA2.0",
 					"SSD3.0",
 					"EHDD",
-					"SATA2.0",
+					"ESSD_PL1",
+					"ESSD_PL2",
+					"ESSD_PL3",
 				}, false),
 				Default: "SSD3.0",
 			},
@@ -92,6 +97,14 @@ func resourceKsyunVolume() *schema.Resource {
 			"instance_id": {
 				Type:     schema.TypeString,
 				Computed: true,
+			},
+
+			// 快照建盘（API不返回这个值，所以diff时忽略这个值）
+			"snapshot_id": {
+				Type:             schema.TypeString,
+				Optional:         true,
+				ForceNew:         true,
+				DiffSuppressFunc: kecDiskSnapshotIdDiffSuppress,
 			},
 		},
 	}

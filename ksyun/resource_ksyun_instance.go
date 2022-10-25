@@ -102,10 +102,12 @@ func resourceKsyunInstance() *schema.Resource {
 							ForceNew:     true,
 							ValidateFunc: validation.IntBetween(10, 16000),
 						},
+						// 快照建盘（API不返回这个值，所以diff时忽略这个值）
 						"disk_snapshot_id": {
-							Type:     schema.TypeString,
-							Optional: true,
-							ForceNew: true,
+							Type:             schema.TypeString,
+							Optional:         true,
+							ForceNew:         true,
+							DiffSuppressFunc: kecDiskSnapshotIdDiffSuppress,
 						},
 						"delete_with_instance": {
 							Type:     schema.TypeBool,
@@ -188,6 +190,7 @@ func resourceKsyunInstance() *schema.Resource {
 				Elem:     &schema.Schema{Type: schema.TypeString},
 				Required: true,
 				Set:      schema.HashString,
+				MinItems: 1,
 			},
 			"private_ip_address": {
 				Type:     schema.TypeString,
