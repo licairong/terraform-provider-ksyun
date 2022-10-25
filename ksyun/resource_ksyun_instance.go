@@ -190,6 +190,7 @@ func resourceKsyunInstance() *schema.Resource {
 				Elem:     &schema.Schema{Type: schema.TypeString},
 				Required: true,
 				Set:      schema.HashString,
+				MinItems: 1,
 			},
 			"private_ip_address": {
 				Type:     schema.TypeString,
