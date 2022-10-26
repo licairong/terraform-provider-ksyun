@@ -293,6 +293,15 @@ func resourceKsyunInstance() *schema.Resource {
 				Type:     schema.TypeString,
 				Computed: true,
 			},
+
+			// AutoCreateEbs: 是否自动创建数据盘；
+			// 针对整机镜像，如果是true会自动使用镜像关联的快照建盘，这种情况用tf管理盘会比较困难，因此tf默认设置为false
+			"auto_create_ebs": {
+				Type:             schema.TypeBool,
+				Optional:         true,
+				Default:          false,
+				DiffSuppressFunc: kecImportDiffSuppress,
+			},
 		},
 	}
 }
