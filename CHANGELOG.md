@@ -1,4 +1,17 @@
-## 1.1.1 (Unreleased)
+## 1.3.56 (Nov 1, 2022)
+
+IMPROVEMENTS:
+
+- 支持一键三连，更配会自动关机，自动重启
+- instance的security_group_id增加MinItems限制
+- volume增加snapshot_id字段
+- 优化instance和volume的snapshot_id字段的diff判断（由于api不返回该字段，diff默认忽略）
+
+BUG FIXES:
+
+- 修复更配无法触发的问题
+- 修复机型其他属性修改触发网卡更新的问题
+
 
 ## 1.1.0 (Dec 21,2020)
 
