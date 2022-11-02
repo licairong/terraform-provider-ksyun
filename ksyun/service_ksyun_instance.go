@@ -412,7 +412,18 @@ func (s *KecService) modifyKecInstance(d *schema.ResourceData, resource *schema.
 	// 先stop再start，有时候stop执行后机器没有关闭（默认不使用强制重启，避免客户在不知情的情况下影响服务）；
 	// 如果卡在stop，用户使用其他方式重启了机器，stop就会一直retry
 	// 这里改用reboot，然后等待active，如果没有成功，用户从控制台重启后也会变成active状态，retry到此状态就可以正常退出了
-	if specCall.executeCall != nil || hostNameCall.executeCall != nil {
+
+	// 2022-11-01 [兼容一键三连] by ydx
+	// 根据实例状态判断是否需要重启, 和修改hostname区处理
+	if specCall.executeCall != nil {
+		beforeSpecCall, err := s.rebootOrStartKecInstance(d)
+		if err != nil {
+			return err
+		}
+		callbacks = append(callbacks, beforeSpecCall)
+	}
+
+	if hostNameCall.executeCall != nil {
 		rebootCall, err := s.rebootKecInstance(d)
 		if err != nil {
 			return err
@@ -510,6 +521,9 @@ func (s *KecService) modifyKecInstanceType(d *schema.ResourceData, resource *sch
 	}
 	if len(updateReq) > 0 {
 		updateReq["InstanceId"] = d.Id()
+		// 兼容一键三连功能
+		updateReq["StopInstance"] = true
+		updateReq["AutoRestart"] = true
 		callback = ApiCall{
 			param:  &updateReq,
 			action: "ModifyInstanceType",
@@ -521,7 +535,11 @@ func (s *KecService) modifyKecInstanceType(d *schema.ResourceData, resource *sch
 			},
 			afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
 				logger.Debug(logger.RespFormat, call.action, *(call.param), *resp)
-				err = s.checkKecInstanceState(d, "", []string{"resize_success_local", "migrating_success", "migrating_success_off_line"}, d.Timeout(schema.TimeoutUpdate))
+				err = s.checkKecInstanceState(d, "", []string{
+					"active",
+					"resize_success_local", "migrating_success", "migrating_success_off_line", "cross_finish",
+				}, d.Timeout(schema.TimeoutUpdate))
+
 				if err != nil {
 					return err
 				}
@@ -907,6 +925,46 @@ func (s *KecService) stopOrStartKecInstance(d *schema.ResourceData) (callback Ap
 		} else {
 			return s.stopKecInstance(d)
 		}
+	}
+	return callback, err
+}
+
+func (s *KecService) rebootOrStartKecInstance(d *schema.ResourceData) (callback ApiCall, err error) {
+	updateReq := map[string]interface{}{
+		"InstanceId.1": d.Id(),
+	}
+	callback = ApiCall{
+		param:  &updateReq,
+		action: "RebootOrStartInstances",
+		executeCall: func(d *schema.ResourceData, client *KsyunClient, call ApiCall) (resp *map[string]interface{}, err error) {
+
+			data, err := s.readKecInstance(d, "", false)
+			if err != nil {
+				return nil, err
+			}
+			status, err := getSdkValue("InstanceState.Name", data)
+			if err != nil {
+				return nil, err
+			}
+			if status == "active" {
+				return nil, nil
+			}
+			//"active",
+			//	"resize_success_local", "migrating_success", "migrating_success_off_line", "cross_finish",
+
+			conn := client.kecconn
+			logger.Debug(logger.RespFormat, call.action, *(call.param))
+			resp, err = conn.RebootInstances(call.param)
+			return resp, err
+		},
+		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
+			logger.Debug(logger.RespFormat, call.action, *(call.param), resp)
+			err = s.checkKecInstanceState(d, "", []string{"active"}, d.Timeout(schema.TimeoutUpdate))
+			if err != nil {
+				return err
+			}
+			return err
+		},
 	}
 	return callback, err
 }
