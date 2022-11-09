@@ -465,6 +465,10 @@ func (s *KecService) createKecInstanceCommon(d *schema.ResourceData, resource *s
 	createReq["MaxCount"] = "1"
 	createReq["MinCount"] = "1"
 
+	if _, ok := d.GetOk("auto_create_ebs"); !ok {
+		createReq["AutoCreateEbs"] = false
+	}
+
 	callback = ApiCall{
 		param:  &createReq,
 		action: "RunInstances",
@@ -472,6 +476,7 @@ func (s *KecService) createKecInstanceCommon(d *schema.ResourceData, resource *s
 			conn := client.kecconn
 			logger.Debug(logger.RespFormat, call.action, *(call.param))
 			resp, err = conn.RunInstances(call.param)
+			logger.Debug(logger.RespFormat, call.action, "runinstances", err)
 			return resp, err
 		},
 		afterCall: func(d *schema.ResourceData, client *KsyunClient, resp *map[string]interface{}, call ApiCall) (err error) {
