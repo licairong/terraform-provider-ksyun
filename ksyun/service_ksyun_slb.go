@@ -496,6 +496,13 @@ func (s *SlbService) ReadAndSetListener(d *schema.ResourceData, r *schema.Resour
 	if err != nil {
 		return err
 	}
+
+	// 如果没有返回acl信息，手动加上这个字段（否则在控制台解绑后，tf无法正常获取到绑定状态的更改）
+	if _, ok := data["LoadBalancerAclId"]; !ok {
+		data["LoadBalancerAclId"] = nil
+	}
+
+	//logger.Debug("test", "ReadAndSetListener", data)
 	extra := map[string]SdkResponseMapping{
 		"Session": {
 			Field: "session",
