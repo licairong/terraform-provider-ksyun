@@ -111,13 +111,14 @@ The following arguments are supported:
 * `instance_password` - (Optional) Password to an instance is a string of 8 to 32 characters. 
 * `instance_name` - (Optional) The name of instance, which contains 2-64 characters and only support Chinese, English, numbers.
 * `keep_image_login` - (Optional) Keep the initial settings of the custom image.
-* `charge_type` - (Required) Valid values are Monthly, Daily, HourlyInstantSettlement.
-* `purchase_time` - (Optional) The duration that you will buy the resource.
+* `charge_type` - (Required, ForceNew) Valid values are Monthly, Daily, HourlyInstantSettlement.
+* `purchase_time` - (Optional, ForceNew) The duration that you will buy the resource.
 * `private_ip_address` - (Optional) Instance private IP address can be specified when you creating new instance.
-* `sriov_net_support` (Optional) Network enhancement.
+* `sriov_net_support` (Optional, ForceNew) Network enhancement.
+* `data_guard_id` (Optional, ForceNew) Add instance being created to a disaster tolerance group
 * `project_id` - (Optional) The project instance belongs to.
-* `user_data` - (Optional) The user data to be specified into this instance. Must be encrypted in base64 format and limited in 16 KB.
-
+* `user_data` - (Optional, ForceNew) The user data to be specified into this instance. Must be encrypted in base64 format and limited in 16 KB.
+* `auto_create_ebs` - (Optional) Create volumes from snapshots in the custom image, default is false.
 
 ## Attributes Reference
 
