@@ -37,9 +37,9 @@ func resourceKsyunKrdsRr() *schema.Resource {
 		ForceNew:    true,
 	}
 	rrSchema["db_instance_class"] = &schema.Schema{
-		Type:         schema.TypeString,
-		Required:     true,
-		ForceNew:     true,
+		Type:     schema.TypeString,
+		Required: true,
+		//ForceNew:     true,
 		ValidateFunc: validDbInstanceClass(),
 	}
 	rrSchema["db_instance_type"] = &schema.Schema{
