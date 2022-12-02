@@ -1,3 +1,10 @@
+## 1.3.59 (Dec 2, 2022)
+
+BUG FIXES:
+
+- 修复krds只读实例不能更配的问题：ksyun_krds_rr的db_instance_class字段，ForceNew置为false
+
+
 ## 1.3.58 (Nov 9, 2022)
 
 BUG FIXES:
