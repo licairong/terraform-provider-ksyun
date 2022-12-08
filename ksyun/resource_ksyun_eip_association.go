@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"strings"
 )
 
 func resourceKsyunEipAssociation() *schema.Resource {
@@ -100,6 +101,10 @@ func resourceKsyunEipAssociationRead(d *schema.ResourceData, meta interface{}) (
 	eipService := EipService{meta.(*KsyunClient)}
 	err = eipService.ReadAndSetAddressAssociate(d, resourceKsyunEipAssociation())
 	if err != nil {
+		if strings.Contains(err.Error(), "not associate in") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading address association %q, %s", d.Id(), err)
 	}
 	return err

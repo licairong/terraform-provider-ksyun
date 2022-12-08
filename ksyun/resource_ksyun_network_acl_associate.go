@@ -3,6 +3,7 @@ package ksyun
 import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"strings"
 )
 
 func resourceKsyunNetworkAclAssociate() *schema.Resource {
@@ -41,6 +42,10 @@ func resourceKsyunNetworkAclAssociateRead(d *schema.ResourceData, meta interface
 	vpcService := VpcService{meta.(*KsyunClient)}
 	err = vpcService.ReadAndSetNetworkAclAssociate(d, resourceKsyunNetworkAclAssociate())
 	if err != nil {
+		if strings.Contains(err.Error(), "not associate in") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading network acl associate  %q, %s", d.Id(), err)
 	}
 	return err

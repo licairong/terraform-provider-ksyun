@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"strings"
 )
 
 func resourceKsyunInstancesWithListener() *schema.Resource {
@@ -94,6 +95,10 @@ func resourceKsyunInstancesWithListenerRead(d *schema.ResourceData, meta interfa
 	slbService := SlbService{meta.(*KsyunClient)}
 	err = slbService.ReadAndSetRealServer(d, resourceKsyunInstancesWithListener())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading real server %q, %s", d.Id(), err)
 	}
 	return err

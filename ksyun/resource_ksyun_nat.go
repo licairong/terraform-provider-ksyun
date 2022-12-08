@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"strings"
 )
 
 func resourceKsyunNat() *schema.Resource {
@@ -130,6 +131,10 @@ func resourceKsyunNatRead(d *schema.ResourceData, meta interface{}) (err error) 
 	vpcService := VpcService{meta.(*KsyunClient)}
 	err = vpcService.ReadAndSetNat(d, resourceKsyunNat())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading nat %q, %s", d.Id(), err)
 	}
 	return err

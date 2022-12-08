@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"strings"
 )
 
 func resourceKsyunSubnet() *schema.Resource {
@@ -136,6 +137,10 @@ func resourceKsyunSubnetRead(d *schema.ResourceData, meta interface{}) (err erro
 	vpcService := VpcService{meta.(*KsyunClient)}
 	err = vpcService.ReadAndSetSubnet(d, resourceKsyunSubnet())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading subnet %q, %s", d.Id(), err)
 	}
 	return err

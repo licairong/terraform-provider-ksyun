@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"strings"
 )
 
 func resourceKsyunLoadBalancerAclEntry() *schema.Resource {
@@ -62,6 +63,10 @@ func resourceKsyunLoadBalancerAclEntryRead(d *schema.ResourceData, meta interfac
 	slbService := SlbService{meta.(*KsyunClient)}
 	err = slbService.ReadAndSetLoadBalancerAclEntry(d, resourceKsyunLoadBalancerAclEntry())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading lb acl entry %q, %s", d.Id(), err)
 	}
 	return err

@@ -3,6 +3,7 @@ package ksyun
 import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"strings"
 )
 
 func resourceKsyunNetworkAcl() *schema.Resource {
@@ -68,6 +69,10 @@ func resourceKsyunNetworkAclRead(d *schema.ResourceData, meta interface{}) (err 
 	vpcService := VpcService{meta.(*KsyunClient)}
 	err = vpcService.ReadAndSetNetworkAcl(d, resourceKsyunNetworkAcl())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading network acl  %q, %s", d.Id(), err)
 	}
 	return err

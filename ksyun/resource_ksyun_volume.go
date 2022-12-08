@@ -3,6 +3,7 @@ package ksyun
 import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
@@ -124,6 +125,10 @@ func resourceKsyunVolumeRead(d *schema.ResourceData, meta interface{}) (err erro
 	ebsService := EbsService{meta.(*KsyunClient)}
 	err = ebsService.ReadAndSetVolume(d, resourceKsyunVolume())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading volume %q, %s", d.Id(), err)
 	}
 	return err

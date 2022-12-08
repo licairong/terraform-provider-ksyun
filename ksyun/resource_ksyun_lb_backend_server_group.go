@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"strings"
 )
 
 func resourceKsyunBackendServerGroup() *schema.Resource {
@@ -92,6 +93,10 @@ func resourceKsyunBackendServerGroupRead(d *schema.ResourceData, meta interface{
 	slbService := SlbService{meta.(*KsyunClient)}
 	err = slbService.ReadAndSetBackendServerGroup(d, resourceKsyunBackendServerGroup())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading backend server group %q, %s", d.Id(), err)
 	}
 	return err

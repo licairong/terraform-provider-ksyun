@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"strings"
 )
 
 func resourceKsyunListener() *schema.Resource {
@@ -204,6 +205,10 @@ func resourceKsyunListenerRead(d *schema.ResourceData, meta interface{}) (err er
 	slbService := SlbService{meta.(*KsyunClient)}
 	err = slbService.ReadAndSetListener(d, resourceKsyunListener())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading listener %q, %s", d.Id(), err)
 	}
 	return err

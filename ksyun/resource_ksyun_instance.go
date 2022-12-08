@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"strings"
 	"time"
 )
 
@@ -320,6 +321,10 @@ func resourceKsyunInstanceRead(d *schema.ResourceData, meta interface{}) (err er
 	kecService := KecService{meta.(*KsyunClient)}
 	err = kecService.readAndSetKecInstance(d, resourceKsyunInstance())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading Instance: %s", err)
 	}
 	return err

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"strings"
 )
 
 func resourceKsyunEip() *schema.Resource {
@@ -120,6 +121,10 @@ func resourceKsyunEipRead(d *schema.ResourceData, meta interface{}) (err error) 
 	eipService := EipService{meta.(*KsyunClient)}
 	err = eipService.ReadAndSetAddress(d, resourceKsyunEip())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading address %q, %s", d.Id(), err)
 	}
 	return err

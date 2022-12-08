@@ -3,6 +3,7 @@ package ksyun
 import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"strings"
 )
 
 func resourceKsyunSecurityGroup() *schema.Resource {
@@ -68,6 +69,10 @@ func resourceKsyunSecurityGroupRead(d *schema.ResourceData, meta interface{}) (e
 	vpcService := VpcService{meta.(*KsyunClient)}
 	err = vpcService.ReadAndSetSecurityGroup(d, resourceKsyunSecurityGroup())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading security group  %q, %s", d.Id(), err)
 	}
 	return err

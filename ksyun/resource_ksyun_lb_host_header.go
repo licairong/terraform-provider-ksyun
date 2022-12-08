@@ -3,6 +3,7 @@ package ksyun
 import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"strings"
 )
 
 func resourceKsyunListenerHostHeader() *schema.Resource {
@@ -60,6 +61,10 @@ func resourceKsyunListenerHostHeaderRead(d *schema.ResourceData, meta interface{
 	slbService := SlbService{meta.(*KsyunClient)}
 	err = slbService.ReadAndSetHostHeader(d, resourceKsyunListenerHostHeader())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading host header %q, %s", d.Id(), err)
 	}
 	return err

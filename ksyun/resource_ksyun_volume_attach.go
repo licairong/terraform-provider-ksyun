@@ -2,6 +2,7 @@ package ksyun
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
@@ -88,6 +89,10 @@ func resourceKsyunVolumeAttachRead(d *schema.ResourceData, meta interface{}) (er
 	ebsService := EbsService{meta.(*KsyunClient)}
 	err = ebsService.ReadAndSetVolumeAttach(d, resourceKsyunVolumeAttach())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading volume attach %q, %s", d.Id(), err)
 	}
 	return err

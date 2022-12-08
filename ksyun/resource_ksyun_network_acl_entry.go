@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"strings"
 )
 
 func resourceKsyunNetworkAclEntry() *schema.Resource {
@@ -117,6 +118,10 @@ func resourceKsyunNetworkAclEntryRead(d *schema.ResourceData, meta interface{}) 
 	vpcService := VpcService{meta.(*KsyunClient)}
 	err = vpcService.ReadAndSetNetworkAclEntry(d, resourceKsyunNetworkAclEntry())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading network acl entry  %q, %s", d.Id(), err)
 	}
 	return err

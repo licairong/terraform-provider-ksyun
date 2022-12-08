@@ -3,6 +3,7 @@ package ksyun
 import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"strings"
 )
 
 func resourceKsyunTag() *schema.Resource {
@@ -76,6 +77,10 @@ func resourceKsyunTagRead(d *schema.ResourceData, meta interface{}) (err error) 
 	tagService := TagV1Service{meta.(*KsyunClient)}
 	err = tagService.ReadAndSetTag(d, resourceKsyunTag())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading tag, %s", err)
 	}
 	return

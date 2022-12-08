@@ -3,6 +3,7 @@ package ksyun
 import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"strings"
 )
 
 func resourceKsyunSSHKey() *schema.Resource {
@@ -54,6 +55,10 @@ func resourceKsyunSSHKeyRead(d *schema.ResourceData, meta interface{}) (err erro
 	sksService := SksService{meta.(*KsyunClient)}
 	err = sksService.ReadAndSetKey(d, resourceKsyunSSHKey())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading ssh key %q, %s", d.Id(), err)
 	}
 	return err

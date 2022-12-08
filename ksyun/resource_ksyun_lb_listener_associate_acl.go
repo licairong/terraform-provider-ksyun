@@ -3,6 +3,7 @@ package ksyun
 import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
+	"strings"
 )
 
 func resourceKsyunListenerAssociateAcl() *schema.Resource {
@@ -41,6 +42,10 @@ func resourceKsyunListenerAssociateAclRead(d *schema.ResourceData, meta interfac
 	slbService := SlbService{meta.(*KsyunClient)}
 	err = slbService.ReadAndSetLoadBalancerAclAssociate(d, resourceKsyunListenerAssociateAcl())
 	if err != nil {
+		if strings.Contains(err.Error(), "not associate in") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading  listener acl associate %q, %s", d.Id(), err)
 	}
 	return err

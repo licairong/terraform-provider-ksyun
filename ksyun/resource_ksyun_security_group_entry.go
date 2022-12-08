@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/schema"
 	"github.com/hashicorp/terraform-plugin-sdk/helper/validation"
+	"strings"
 )
 
 func resourceKsyunSecurityGroupEntry() *schema.Resource {
@@ -101,6 +102,10 @@ func resourceKsyunSecurityGroupEntryRead(d *schema.ResourceData, meta interface{
 	vpcService := VpcService{meta.(*KsyunClient)}
 	err = vpcService.ReadAndSetSecurityGroupEntry(d, resourceKsyunSecurityGroupEntry())
 	if err != nil {
+		if strings.Contains(err.Error(), "not exist") {
+			d.SetId("")
+			return nil
+		}
 		return fmt.Errorf("error on reading security group entry %q, %s", d.Id(), err)
 	}
 	return err
